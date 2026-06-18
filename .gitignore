@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Project large files
+*.pdf
+*.mp4
+*.mov
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tiff
+*.xmind
+*.htm
+*.html
+*.pptx
+*.docx
+LUT教学视频与图片/
+LUT预设1/
+
+# Generated data
+.lightrag_lut_data/
+.lightrag_test_data/
+.lut_vectors/
+.pytest_cache/
+
+# Project
+*.tmp
+.DS_Store
+Thumbs.db
+
+# AnythingLLM
+anything-llm/data/
+
+# Jupyter
+.ipynb_checkpoints/

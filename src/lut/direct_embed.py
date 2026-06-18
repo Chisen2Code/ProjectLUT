@@ -1,0 +1,213 @@
+"""
+直接向量嵌入与检索
+
+绕过 LightRAG 管道，直接用 bge-m3 嵌入 LUT 预设标签，
+numpy 余弦相似度检索。适用于短标签语义匹配场景。
+"""
+
+import json
+import sqlite3
+import time
+import urllib.request
+from pathlib import Path
+
+import numpy as np
+
+from .parser import load_presets, presets_to_texts
+
+# _time alias — avoid collision with `time` module used for sleep() above
+_time = time
+
+
+OLLAMA_EMBED_URL = "http://localhost:11434/api/embed"
+EMBED_MODEL = "bge-m3:latest"
+STORE_DIR = Path(".lut_vectors")
+_DB_PATH = STORE_DIR / "search.db"
+
+# 进程内缓存 —— 避免每次调用都重新读文件
+_cached_vectors = None
+_cached_texts = None
+_cached_vectors_norm = None  # 预计算 L2 范数后的向量 (n, 1024)
+
+
+def _init_db():
+    """初始化搜索日志表"""
+    _DB_PATH.parent.mkdir(exist_ok=True)
+    with sqlite3.connect(str(_DB_PATH)) as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS search_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                query TEXT NOT NULL,
+                top_results TEXT NOT NULL,
+                result_count INTEGER DEFAULT 0,
+                duration_ms INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+
+def log_search(query: str, results: list[tuple[str, float]], duration_ms: int):
+    """记录搜索日志"""
+    _init_db()
+    data = json.dumps([{"name": r[0], "score": r[1]} for r in results], ensure_ascii=False)
+    with sqlite3.connect(str(_DB_PATH)) as conn:
+        conn.execute(
+            "INSERT INTO search_log (query, top_results, result_count, duration_ms) VALUES (?, ?, ?, ?)",
+            (query, data, len(results), duration_ms),
+        )
+
+
+def get_stats(cold_threshold: int = 0) -> dict:
+    """返回统计信息"""
+    _init_db()
+    with sqlite3.connect(str(_DB_PATH)) as conn:
+        total = conn.execute("SELECT COUNT(*) FROM search_log").fetchone()[0]
+        top_queries = conn.execute(
+            "SELECT query, COUNT(*) as cnt FROM search_log GROUP BY query ORDER BY cnt DESC LIMIT 10"
+        ).fetchall()
+        cold = conn.execute(
+            "SELECT query, result_count FROM search_log WHERE result_count <= ? ORDER BY created_at DESC LIMIT 20",
+            (cold_threshold,),
+        ).fetchall()
+    return {
+        "total": total,
+        "top_queries": top_queries,
+        "cold_queries": cold,
+    }
+
+
+def get_history(n: int = 20) -> list[dict]:
+    """返回最近 n 条搜索记录"""
+    _init_db()
+    with sqlite3.connect(str(_DB_PATH)) as conn:
+        rows = conn.execute(
+            "SELECT query, result_count, duration_ms, created_at FROM search_log ORDER BY id DESC LIMIT ?",
+            (n,),
+        ).fetchall()
+    return [{"query": r[0], "count": r[1], "ms": r[2], "at": r[3]} for r in rows]
+
+
+def _embed_batch(texts: list[str], batch_size: int = 32) -> np.ndarray:
+    """调用 Ollama bge-m3 分批嵌入，返回 (n, dim) 数组"""
+    all_embeddings = []
+    total = len(texts)
+    for i in range(0, total, batch_size):
+        batch = texts[i : i + batch_size]
+        body = json.dumps({"model": EMBED_MODEL, "input": batch}).encode()
+        req = urllib.request.Request(OLLAMA_EMBED_URL, body, {"Content-Type": "application/json"})
+        resp = json.loads(urllib.request.urlopen(req).read())
+        embeds = resp["embeddings"]
+        all_embeddings.extend(embeds)
+        print(f"  嵌入 {min(i + len(batch))}/{total}")
+    return np.array(all_embeddings, dtype=np.float32)
+
+
+def build_index(presets_dir: str = "LUT预设1", force: bool = False):
+    """构建向量索引，保存到 .lut_vectors/"""
+    global _cached_vectors, _cached_texts, _cached_vectors_norm
+    vectors_file = STORE_DIR / "vectors.npy"
+    texts_file = STORE_DIR / "texts.txt"
+
+    if not force and vectors_file.exists() and texts_file.exists():
+        # 确保缓存已加载
+        if _cached_vectors is None:
+            _cached_vectors = np.load(vectors_file).astype(np.float32)
+            texts = texts_file.read_text(encoding="utf-8").split("\n")
+            _cached_texts = texts
+            norms = np.linalg.norm(_cached_vectors, axis=1, keepdims=True) + 1e-8
+            _cached_vectors_norm = _cached_vectors / norms
+        return
+
+    STORE_DIR.mkdir(exist_ok=True)
+
+    presets = load_presets(presets_dir)
+    texts = presets_to_texts(presets)
+    print(f"嵌入 {len(texts)} 个预设...")
+
+    vectors = _embed_batch(texts)
+    np.save(vectors_file, vectors)
+    texts_file.write_text("\n".join(texts), encoding="utf-8")
+
+    # 更新缓存
+    _cached_vectors = vectors
+    _cached_texts = texts
+    norms = np.linalg.norm(vectors, axis=1, keepdims=True) + 1e-8
+    _cached_vectors_norm = vectors / norms
+
+    print(f"索引完成: {vectors.shape[0]} 个向量, {vectors.shape[1]} 维")
+
+
+def _load_index():
+    """懒加载索引到内存"""
+    global _cached_vectors, _cached_texts, _cached_vectors_norm
+    if _cached_vectors is None or _cached_texts is None:
+        vectors_file = STORE_DIR / "vectors.npy"
+        texts_file = STORE_DIR / "texts.txt"
+        if not (vectors_file.exists() and texts_file.exists()):
+            raise RuntimeError("尚未构建向量索引 —— 请先调用 build_index()")
+        _cached_vectors = np.load(vectors_file).astype(np.float32)
+        texts = texts_file.read_text(encoding="utf-8").split("\n")
+        _cached_texts = texts
+        norms = np.linalg.norm(_cached_vectors, axis=1, keepdims=True) + 1e-8
+        _cached_vectors_norm = _cached_vectors / norms
+    return _cached_vectors, _cached_texts, _cached_vectors_norm
+
+
+def get_cached_preset_names() -> list[str]:
+    """返回预设名列表（从 texts 中，text 格式 "name — category — ..."）"""
+    _, texts, _ = _load_index()
+    return [t.split(" — ")[0] for t in texts]
+
+
+def search(query: str, top_n: int = 5) -> list[tuple[str, float]]:
+    """余弦相似度检索，返回 [(文本, 相似度), ...]"""
+    _t0 = _time.perf_counter()
+    _, texts, v_norm = _load_index()
+
+    # 只用一次 Ollama 调用 —— 单文本嵌入
+    body = json.dumps({"model": EMBED_MODEL, "input": [query]}).encode()
+    req = urllib.request.Request(OLLAMA_EMBED_URL, body, {"Content-Type": "application/json"})
+    resp = json.loads(urllib.request.urlopen(req).read())
+    q_vec = np.array(resp["embeddings"][0], dtype=np.float32)
+    q_norm = q_vec / (np.linalg.norm(q_vec) + 1e-8)
+
+    # 单次矩阵点积 —— 152 个余弦相似度
+    scores = np.dot(v_norm, q_norm)
+
+    # 部分排序比全 argsort 更快
+    if top_n >= len(scores):
+        top_idx = np.argsort(-scores)
+    else:
+        top_idx = np.argpartition(-scores, top_n - 1)[:top_n]
+        top_idx = top_idx[np.argsort(-scores[top_idx])]
+
+    results = [(texts[i], float(scores[i])) for i in top_idx]
+    _elapsed = int((_time.perf_counter() - _t0) * 1000)
+    log_search(query, results, _elapsed)
+    return results
+
+
+# ── CLI ──────────────────────────────────────────────
+
+if __name__ == "__main__":
+    import sys
+
+    if len(sys.argv) > 1 and sys.argv[1] == "--build":
+        build_index(force=True)
+    elif len(sys.argv) > 1:
+        query = " ".join(sys.argv[1:])
+        build_index()  # build once if not exists
+        for text, score in search(query):
+            print(f"{score:.4f}  {text}")
+    else:
+        # 交互模式
+        build_index()
+        while True:
+            try:
+                q = input("\n查询> ")
+                if not q:
+                    break
+                for text, score in search(q):
+                    print(f"  {score:.4f}  {text}")
+            except (EOFError, KeyboardInterrupt):
+                break

@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>ProjectLUT · LUT 语义搜索与调色</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #0f1115;
+    color: #e6e8ec;
+    font-size: 13px;
+  }
+  header {
+    padding: 12px 24px;
+    background: #1a1d24;
+    color: #e6e8ec;
+    border-bottom: 1px solid #2a2d36;
+  }
+  header h1 { margin: 0; font-size: 15px; font-weight: 500; }
+
+  .layout {
+    display: flex;
+    gap: 16px;
+    padding: 16px;
+    min-height: calc(100vh - 52px);
+  }
+  .left-panel  { width: 380px; flex-shrink: 0; }
+  .right-panel { flex: 1; }
+
+  .panel {
+    background: #1a1d24;
+    border: 1px solid #2a2d36;
+    border-radius: 4px;
+    padding: 14px;
+    margin-bottom: 16px;
+  }
+  .panel-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #8a8f9b;
+    letter-spacing: 1px;
+    margin: 0 0 10px;
+  }
+
+  /* ---------- 拖拽上传区 ---------- */
+  .drop-zone {
+    border: 2px dashed #3a3d46;
+    border-radius: 6px;
+    padding: 28px 20px;
+    text-align: center;
+    color: #6b7280;
+    cursor: pointer;
+    transition: all 0.15s;
+    background: #14171d;
+  }
+  .drop-zone:hover {
+    border-color: #3b82f6;
+    color: #93c5fd;
+    background: #1a2236;
+  }
+  .drop-zone.drag-over {
+    border-color: #3b82f6;
+    background: #1a2236;
+    color: #93c5fd;
+  }
+  .drop-zone .icon {
+    font-size: 32px;
+    line-height: 1;
+    margin-bottom: 8px;
+  }
+  .drop-zone .main {
+    font-size: 14px;
+    color: #cbd5e1;
+    margin-bottom: 4px;
+  }
+  .drop-zone .hint { font-size: 11px; color: #555; }
+  .file-info {
+    margin-top: 10px;
+    padding: 8px 10px;
+    background: #14171d;
+    border-radius: 4px;
+    font-size: 12px;
+    color: #9ca3af;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .file-info .clear {
+    color: #f87171;
+    cursor: pointer;
+    font-size: 11px;
+  }
+
+  /* ---------- 搜索 ---------- */
+  .search-row { display: flex; gap: 8px; align-items: center; }
+  .search-row input {
+    flex: 1;
+    padding: 8px 10px;
+    border: 1px solid #2a2d36;
+    border-radius: 4px;
+    font-size: 13px;
+    outline: none;
+    background: #14171d;
+    color: #e6e8ec;
+  }
+  .search-row input:focus { border-color: #3b82f6; }
+  .search-row button {
+    padding: 8px 16px;
+    background: #2563eb;
+    color: #fff;
+    border: 0;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .search-row button:hover { background: #1d4ed8; }
+
+  /* ---------- 搜索结果 ---------- */
+  .results {
+    list-style: none;
+    padding: 0;
+    margin: 10px 0 0;
+    border-top: 1px solid #2a2d36;
+  }
+  .results li {
+    padding: 8px 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    border-bottom: 1px solid #22252e;
+    font-size: 13px;
+    color: #cbd5e1;
+    transition: background 0.1s;
+  }
+  .results li:hover { background: #22252e; }
+  .results li.selected {
+    background: #2563eb;
+    color: #fff;
+  }
+  .results li .rank {
+    width: 20px;
+    height: 20px;
+    line-height: 20px;
+    text-align: center;
+    background: #2a2d36;
+    color: #9ca3af;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-right: 10px;
+    flex-shrink: 0;
+  }
+  .results li.selected .rank {
+    background: rgba(255,255,255,0.2);
+    color: #fff;
+  }
+  .results li .name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .results li .score {
+    font-size: 11px;
+    color: #6b7280;
+    font-family: monospace;
+    margin-left: 8px;
+  }
+  .results li.selected .score { color: rgba(255,255,255,0.7); }
+
+  .status {
+    margin-top: 8px;
+    font-size: 11px;
+    color: #6b7280;
+    min-height: 14px;
+  }
+  .status.err { color: #f87171; }
+
+  /* ---------- 应用按钮 ---------- */
+  .actions { display: flex; gap: 8px; margin-top: 12px; }
+  .btn-apply {
+    flex: 1;
+    padding: 10px;
+    background: #16a34a;
+    color: #fff;
+    border: 0;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .btn-apply:hover:not(:disabled) { background: #15803d; }
+  .btn-apply:disabled {
+    background: #374151;
+    color: #6b7280;
+    cursor: not-allowed;
+  }
+
+  /* ---------- 右侧预览 ---------- */
+  .preview-wrap {
+    background: #1a1d24;
+    border: 1px solid #2a2d36;
+    border-radius: 4px;
+    padding: 14px;
+    height: 100%;
+    min-height: 600px;
+  }
+  .preview-grid { display: flex; gap: 14px; }
+  .preview-cell { flex: 1; min-width: 0; }
+  .preview-cell .label {
+    font-size: 12px;
+    color: #8a8f9b;
+    font-weight: 600;
+    margin-bottom: 8px;
+    letter-spacing: 0.5px;
+  }
+  .preview-cell .img-area {
+    width: 100%;
+    min-height: 480px;
+    background:
+      repeating-conic-gradient(#1f222b 0% 25%, #14171d 0% 50%)
+      50% / 16px 16px;
+    border: 1px solid #2a2d36;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .preview-cell img {
+    max-width: 100%;
+    max-height: 560px;
+    display: block;
+  }
+  .preview-cell .empty {
+    color: #4b5563;
+    font-size: 12px;
+  }
+  .btn-save {
+    display: inline-block;
+    margin-top: 12px;
+    padding: 8px 16px;
+    background: #16a34a;
+    color: #fff;
+    text-decoration: none;
+    border-radius: 4px;
+    font-size: 13px;
+  }
+  .btn-save:hover { background: #15803d; }
+
+  input[type="file"] { display: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>ProjectLUT · LUT 语义搜索与调色</h1>
+</header>
+
+<div class="layout">
+
+  <!-- 左侧：上传 + 搜索 -->
+  <div class="left-panel">
+
+    <div class="panel">
+      <div class="panel-title">上传图片</div>
+      <div class="drop-zone" id="dropZone">
+        <div class="icon">🖼️</div>
+        <div class="main">拖拽图片到这里，或点击选择</div>
+        <div class="hint">支持 JPG / PNG · 大图会自动缩放</div>
+      </div>
+      <input type="file" id="fileInput" accept="image/*">
+      <div class="file-info" id="fileInfo" style="display:none">
+        <span id="fileName">—</span>
+        <span class="clear" id="fileClear">清除</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">搜索 LUT 风格</div>
+      <div class="search-row">
+        <input type="text" id="query" placeholder="描述你想要的风格，如：冷色调胶片感">
+        <button onclick="doSearch()">搜索</button>
+      </div>
+      <ul class="results" id="results"></ul>
+      <div class="status" id="status"></div>
+
+      <div class="actions">
+        <button class="btn-apply" id="applyBtn" onclick="doApply()" disabled>应用选中的 LUT 到图片</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- 右侧：预览对比 -->
+  <div class="right-panel">
+    <div class="preview-wrap">
+      <div class="panel-title" style="font-size:12px;font-weight:600;color:#555;letter-spacing:1px;margin-bottom:12px">预览</div>
+      <div class="preview-grid">
+        <div class="preview-cell">
+          <div class="label">原图</div>
+          <div class="img-area" id="origArea">
+            <span class="empty" id="origEmpty">上传图片后在此显示</span>
+            <img id="origImg" style="display:none">
+          </div>
+        </div>
+        <div class="preview-cell">
+          <div class="label">调色后</div>
+          <div class="img-area" id="outArea">
+            <span class="empty" id="outEmpty">应用 LUT 后在此显示</span>
+            <img id="outImg" style="display:none">
+          </div>
+          <a id="saveBtn" class="btn-save" style="display:none" download="lut-adjusted.jpg">💾 保存到本地</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  let currentFile = null;
+  let selectedPresetName = null;
+
+  const fileInput   = document.getElementById("fileInput");
+  const dropZone    = document.getElementById("dropZone");
+  const fileInfo    = document.getElementById("fileInfo");
+  const fileNameEl  = document.getElementById("fileName");
+  const fileClear   = document.getElementById("fileClear");
+  const resultsEl   = document.getElementById("results");
+  const statusEl    = document.getElementById("status");
+  const applyBtn    = document.getElementById("applyBtn");
+  const origImg     = document.getElementById("origImg");
+  const origEmpty   = document.getElementById("origEmpty");
+  const outImg      = document.getElementById("outImg");
+  const outEmpty    = document.getElementById("outEmpty");
+  const saveBtn     = document.getElementById("saveBtn");
+  const queryInput  = document.getElementById("query");
+
+  // ---------- 拖拽上传 ----------
+  dropZone.addEventListener("click", () => fileInput.click());
+
+  dropZone.addEventListener("dragover", e => {
+    e.preventDefault();
+    dropZone.classList.add("drag-over");
+  });
+  dropZone.addEventListener("dragleave", () => {
+    dropZone.classList.remove("drag-over");
+  });
+  dropZone.addEventListener("drop", e => {
+    e.preventDefault();
+    dropZone.classList.remove("drag-over");
+    if (e.dataTransfer.files && e.dataTransfer.files.length) {
+      handleFile(e.dataTransfer.files[0]);
+    }
+  });
+  fileInput.addEventListener("change", e => {
+    if (e.target.files && e.target.files.length) handleFile(e.target.files[0]);
+  });
+  fileClear.addEventListener("click", () => {
+    currentFile = null;
+    fileInfo.style.display = "none";
+    origImg.src = "";
+    origImg.style.display = "none";
+    origEmpty.style.display = "block";
+    fileInput.value = "";
+    updateApplyBtn();
+  });
+
+  function handleFile(file) {
+    if (!file.type.startsWith("image/")) {
+      statusEl.textContent = "请选择图片文件";
+      statusEl.classList.add("err");
+      return;
+    }
+    currentFile = file;
+    fileNameEl.textContent = file.name + "  (" + (file.size / 1024).toFixed(1) + " KB)";
+    fileInfo.style.display = "flex";
+    origImg.src = URL.createObjectURL(file);
+    origImg.style.display = "block";
+    origEmpty.style.display = "none";
+    statusEl.textContent = "";
+    statusEl.classList.remove("err");
+    updateApplyBtn();
+  }
+
+  // ---------- 搜索 ----------
+  queryInput.addEventListener("keydown", e => {
+    if (e.key === "Enter") doSearch();
+  });
+
+  async function doSearch() {
+    const query = queryInput.value.trim();
+    if (!query) return;
+    statusEl.textContent = "搜索中...";
+    statusEl.classList.remove("err");
+    resultsEl.innerHTML = "";
+
+    try {
+      const t0 = performance.now();
+      const resp = await fetch("/api/search", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ query: query, top_n: 5 })
+      });
+      if (!resp.ok) throw new Error("服务器返回 " + resp.status);
+      const data = await resp.json();
+
+      if (!data.results || data.results.length === 0) {
+        resultsEl.innerHTML = "<li style='color:#999;cursor:default'>没有匹配结果</li>";
+        statusEl.textContent = "";
+        return;
+      }
+
+      data.results.forEach((item, idx) => {
+        const li = document.createElement("li");
+
+        const rank = document.createElement("span");
+        rank.className = "rank";
+        rank.textContent = idx + 1;
+        li.appendChild(rank);
+
+        const name = document.createElement("span");
+        name.className = "name";
+        name.textContent = item.preset_name;
+        li.appendChild(name);
+
+        const score = document.createElement("span");
+        score.className = "score";
+        score.textContent = item.score.toFixed(3);
+        li.appendChild(score);
+
+        li.onclick = () => {
+          selectedPresetName = item.preset_name;
+          [...resultsEl.children].forEach(x => x.classList.remove("selected"));
+          li.classList.add("selected");
+          updateApplyBtn();
+        };
+        resultsEl.appendChild(li);
+      });
+      statusEl.textContent = "✓ " + data.results.length + " 个匹配（本地 " + (performance.now() - t0).toFixed(0) + " ms）";
+    } catch (err) {
+      statusEl.textContent = "✗ 搜索失败: " + err.message;
+      statusEl.classList.add("err");
+    }
+  }
+
+  // ---------- 应用 LUT ----------
+  function updateApplyBtn() {
+    applyBtn.disabled = !(currentFile && selectedPresetName);
+    if (applyBtn.disabled) {
+      applyBtn.textContent = "应用选中的 LUT 到图片";
+    } else {
+      applyBtn.textContent = "应用 " + selectedPresetName + " 到图片";
+    }
+  }
+
+  async function doApply() {
+    if (!currentFile || !selectedPresetName) return;
+    statusEl.textContent = "应用中...";
+    statusEl.classList.remove("err");
+    applyBtn.disabled = true;
+
+    try {
+      const t0 = performance.now();
+      const fd = new FormData();
+      fd.append("preset_name", selectedPresetName);
+      fd.append("image", currentFile);
+
+      const resp = await fetch("/api/apply", {
+        method: "POST",
+        body: fd
+      });
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error("服务器返回 " + resp.status + ": " + text);
+      }
+
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      outImg.src = url;
+      outImg.style.display = "block";
+      outEmpty.style.display = "none";
+
+      saveBtn.href = url;
+      saveBtn.style.display = "inline-block";
+      saveBtn.download = currentFile.name.replace(/\.[^.]+$/, "") + "-lut.jpg";
+
+      statusEl.textContent = "✓ 应用完成（本地 " + (performance.now() - t0).toFixed(0) + " ms）";
+    } catch (err) {
+      statusEl.textContent = "✗ 应用失败: " + err.message;
+      statusEl.classList.add("err");
+    } finally {
+      applyBtn.disabled = false;
+      updateApplyBtn();
+    }
+  }
+</script>
+
+</body>
+</html>
