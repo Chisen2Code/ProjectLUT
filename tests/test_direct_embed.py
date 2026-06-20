@@ -41,3 +41,51 @@ def test_get_history():
     if len(rows) > 0:
         assert "query" in rows[0]
         assert "at" in rows[0]
+
+
+# ── dynamic_cut ─────────────────────────────────────────
+
+
+from lut.direct_embed import dynamic_cut
+
+
+def test_dynamic_cut_normal():
+    scores = [(f"p{i}", s) for i, s in enumerate([0.62, 0.55, 0.48, 0.42, 0.35, 0.31, 0.18, 0.12])]
+    result = dynamic_cut(scores)
+    assert len(result) == 6
+    assert result[-1][0] == "p5"
+
+
+def test_dynamic_cut_steep():
+    scores = [(f"p{i}", s) for i, s in enumerate([0.62, 0.55, 0.25, 0.12])]
+    result = dynamic_cut(scores)
+    assert len(result) == 2
+
+
+def test_dynamic_cut_below_min():
+    scores = [(f"p{i}", s) for i, s in enumerate([0.25, 0.12])]
+    result = dynamic_cut(scores)
+    assert result == []
+
+
+def test_dynamic_cut_single():
+    scores = [("p0", 0.62)]
+    result = dynamic_cut(scores)
+    assert len(result) == 1
+
+
+def test_dynamic_cut_empty():
+    result = dynamic_cut([])
+    assert result == []
+
+
+def test_dynamic_cut_max_cap():
+    scores = [(f"p{i}", 0.9 - i*0.02) for i in range(15)]
+    result = dynamic_cut(scores, max_count=10)
+    assert len(result) == 10
+
+
+def test_dynamic_cut_edge_drop():
+    scores = [(f"p{i}", s) for i, s in enumerate([0.50, 0.36])]
+    result = dynamic_cut(scores, drop_threshold=0.15)
+    assert len(result) == 2

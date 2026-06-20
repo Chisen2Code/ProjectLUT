@@ -187,6 +187,27 @@ def search(query: str, top_n: int = 5) -> list[tuple[str, float]]:
     return results
 
 
+def dynamic_cut(results: list[tuple[str, float]], min_score: float = 0.3,
+                max_count: int = 10, drop_threshold: float = 0.15) -> list[tuple[str, float]]:
+    """动态截断：绝对阈值 + 陡降检测 + 上限"""
+    if not results:
+        return []
+
+    sorted_r = sorted(results, key=lambda x: x[1], reverse=True)
+    filtered = [(n, s) for n, s in sorted_r if s >= min_score]
+
+    if not filtered:
+        return []
+
+    cut_idx = len(filtered)
+    for i in range(1, len(filtered)):
+        if filtered[i-1][1] - filtered[i][1] > drop_threshold:
+            cut_idx = i
+            break
+
+    return filtered[:min(cut_idx, max_count)]
+
+
 # ── CLI ──────────────────────────────────────────────
 
 if __name__ == "__main__":
