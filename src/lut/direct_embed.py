@@ -160,8 +160,8 @@ def get_cached_preset_names() -> list[str]:
     return [t.split(" — ")[0] for t in texts]
 
 
-def search(query: str, top_n: int = 5) -> list[tuple[str, float]]:
-    """余弦相似度检索，返回 [(文本, 相似度), ...]"""
+def search(query: str, top_n: int = 5) -> list[tuple[str, float, int]]:
+    """余弦相似度检索，返回 [(文本, 相似度, 索引), ...]"""
     _t0 = _time.perf_counter()
     _, texts, v_norm = _load_index()
 
@@ -182,20 +182,20 @@ def search(query: str, top_n: int = 5) -> list[tuple[str, float]]:
         top_idx = np.argpartition(-scores, top_n - 1)[:top_n]
         top_idx = top_idx[np.argsort(-scores[top_idx])]
 
-    results = [(texts[i], float(scores[i])) for i in top_idx]
+    results = [(texts[i], float(scores[i]), int(i)) for i in top_idx]
     _elapsed = int((_time.perf_counter() - _t0) * 1000)
     log_search(query, results, _elapsed)
     return results
 
 
-def dynamic_cut(results: list[tuple[str, float]], min_score: float = 0.3,
-                max_count: int = 10, drop_threshold: float = 0.15) -> list[tuple[str, float]]:
+def dynamic_cut(results, min_score: float = 0.3,
+                max_count: int = 10, drop_threshold: float = 0.15):
     """动态截断：绝对阈值 + 陡降检测 + 上限"""
     if not results:
         return []
 
     sorted_r = sorted(results, key=lambda x: x[1], reverse=True)
-    filtered = [(n, s) for n, s in sorted_r if s >= min_score]
+    filtered = [item for item in sorted_r if item[1] >= min_score]
 
     if not filtered:
         return []
@@ -276,7 +276,7 @@ if __name__ == "__main__":
     elif len(sys.argv) > 1:
         query = " ".join(sys.argv[1:])
         build_index()  # build once if not exists
-        for text, score in search(query):
+        for text, score, _ in search(query):
             print(f"{score:.4f}  {text}")
     else:
         # 交互模式
@@ -286,7 +286,7 @@ if __name__ == "__main__":
                 q = input("\n查询> ")
                 if not q:
                     break
-                for text, score in search(q):
+                for text, score, _ in search(q):
                     print(f"  {score:.4f}  {text}")
             except (EOFError, KeyboardInterrupt):
                 break

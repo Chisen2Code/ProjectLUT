@@ -15,9 +15,11 @@ def test_search_returns_top5():
     """search 返回 5 个结果，含分数"""
     results = search("冷色调胶片感")
     assert len(results) == 5
-    for text, score in results:
+    for text, score, idx in results:
         assert isinstance(text, str) and len(text) > 0
         assert 0.0 <= score <= 1.0
+        assert isinstance(idx, int)
+        assert 0 <= idx <= 151
 
 
 def test_search_finds_fuji():
@@ -25,6 +27,15 @@ def test_search_finds_fuji():
     results = search("富士胶片风格")
     texts = [r[0] for r in results]
     assert any("富士" in t for t in texts), f"未找到富士: {texts}"
+
+
+def test_search_returns_index():
+    """search 返回结果含 index 字段"""
+    results = search("冷淡", top_n=10)
+    assert len(results) > 0
+    for name, score, idx in results:
+        assert isinstance(idx, int)
+        assert 0 <= idx <= 151
 
 
 def test_log_search_and_stats():
