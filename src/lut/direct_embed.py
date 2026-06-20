@@ -9,6 +9,7 @@ import json
 import sqlite3
 import time
 import urllib.request
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -206,6 +207,63 @@ def dynamic_cut(results: list[tuple[str, float]], min_score: float = 0.3,
             break
 
     return filtered[:min(cut_idx, max_count)]
+
+
+# ── JSON 搜索日志 ────────────────────────────────────────
+
+_LOG_DIR = Path("data/search_log")
+_COUNTER_FILE = _LOG_DIR / ".counter"
+
+
+def _next_search_id() -> str:
+    """生成自增 search_id: YYYY-MM-DD_NNN"""
+    _LOG_DIR.mkdir(parents=True, exist_ok=True)
+    today = datetime.now().strftime("%Y-%m-%d")
+    seq = 1
+    if _COUNTER_FILE.exists():
+        prev_date, prev_seq = _COUNTER_FILE.read_text().strip().split("_")
+        if prev_date == today:
+            seq = int(prev_seq) + 1
+        else:
+            seq = 1
+    _COUNTER_FILE.write_text(f"{today}_{seq:03d}")
+    return f"{today}_{seq:03d}"
+
+
+def log_search_json(query: str, query_vector: list, top_results: list,
+                    duration_ms: int) -> str:
+    """写搜索日志 JSON 文件，返回 search_id"""
+    sid = _next_search_id()
+    data = {
+        "id": sid,
+        "query": query,
+        "query_vector": query_vector,
+        "top_count": len(top_results),
+        "top_results": [
+            {"name": n, "score": s, "index": idx}
+            for n, s, idx in top_results
+        ],
+        "clicked_index": None,
+        "duration_ms": duration_ms,
+        "timestamp": datetime.now().isoformat(),
+    }
+    _LOG_DIR.mkdir(parents=True, exist_ok=True)
+    with open(_LOG_DIR / f"{sid}.json", "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    return sid
+
+
+def log_click(search_id: str, preset_index: int) -> bool:
+    """补写 search_id 对应日志的 clicked_index"""
+    fpath = _LOG_DIR / f"{search_id}.json"
+    if not fpath.exists():
+        return False
+    with open(fpath, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    data["clicked_index"] = preset_index
+    with open(fpath, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    return True
 
 
 # ── CLI ──────────────────────────────────────────────

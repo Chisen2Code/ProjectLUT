@@ -89,3 +89,61 @@ def test_dynamic_cut_edge_drop():
     scores = [(f"p{i}", s) for i, s in enumerate([0.50, 0.36])]
     result = dynamic_cut(scores, drop_threshold=0.15)
     assert len(result) == 2
+
+
+# ── JSON search log ──────────────────────────────────────
+
+
+import json
+from pathlib import Path
+from lut.direct_embed import log_search_json, log_click
+
+LOG_DIR = Path("data/search_log")
+
+
+def test_log_search_json_creates_file():
+    """log_search_json 创建 JSON 文件"""
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    sid = log_search_json(
+        query="冷淡",
+        query_vector=[0.1, 0.2, 0.3],
+        top_results=[("p1", 0.5, 23), ("p2", 0.4, 67)],
+        duration_ms=3
+    )
+    assert sid is not None
+    files = list(LOG_DIR.glob(f"{sid.split('_')[0]}_*.json"))
+    assert len(files) >= 1
+    with open(LOG_DIR / f"{sid}.json", encoding="utf-8") as f:
+        data = json.load(f)
+    assert data["query"] == "冷淡"
+    assert data["query_vector"] == [0.1, 0.2, 0.3]
+    assert data["top_count"] == 2
+    assert data["top_results"][0]["index"] == 23
+    assert data["clicked_index"] is None
+
+
+def test_log_click_updates_file():
+    """log_click 补写 clicked_index"""
+    sid = log_search_json("test", [0.5], [("p", 0.9, 42)], 1)
+    log_click(sid, 42)
+    with open(LOG_DIR / f"{sid}.json", encoding="utf-8") as f:
+        data = json.load(f)
+    assert data["clicked_index"] == 42
+
+
+def test_log_click_unknown_id():
+    """不存在的 search_id 不崩溃"""
+    result = log_click("nonexistent_000", 0)
+    assert result is False
+
+
+def teardown_cleanup():
+    """清理测试产生的日志文件"""
+    import os
+    for f in LOG_DIR.glob("*.json"):
+        try:
+            content = f.read_text(encoding="utf-8")
+            if "test" in content or "nonexistent" in content:
+                f.unlink()
+        except Exception:
+            pass
