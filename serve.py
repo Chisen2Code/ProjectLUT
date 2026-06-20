@@ -20,12 +20,15 @@ import time
 import mimetypes
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-from lut.direct_embed import build_index, search, get_stats, get_cached_preset_names
+from lut.direct_embed import build_index, search, get_stats, get_cached_preset_names, embed_query, dynamic_cut, log_search_json
 from lut.parser import load_presets
 from lut.processor import apply_lut, preload_all_luts
 
 # 预设名 → Preset 对象缓存
 _preset_cache = {}
+
+# 最近一次搜索的 query 向量缓存
+_last_query_vec = [None]  # container, stores [query_vector] of last search
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -54,14 +57,27 @@ class Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(length))
             query = body.get("query", "")
-            top_n = int(body.get("top_n", 5))
             t0 = time.perf_counter()
-            results = search(query, top_n=top_n)
-            elapsed = int((time.perf_counter() - t0) * 1000)
+
+            # 嵌入 + 搜索
+            query_vec = embed_query(query)
+            _last_query_vec[0] = query_vec
+            raw_results = search(query, top_n=30)
+            ms = int((time.perf_counter() - t0) * 1000)
+
+            # 动态截断 + 取 index
+            cut = dynamic_cut([(n, s) for n, s, _ in raw_results])
+            name_to_idx = {n: idx for n, _, idx in raw_results}
+            top = [(n, s, name_to_idx[n]) for n, s in cut]
+
+            # 写 JSON 日志
+            sid = log_search_json(query, query_vec, top, ms)
+
             self.send_json({
-                "results": [{"name": r[0], "preset_name": r[0].split(" — ")[0],
-                           "score": float(r[1])} for r in results],
-                "ms": elapsed,
+                "results": [{"name": n, "score": s, "index": idx} for n, s, idx in top],
+                "count": len(top),
+                "ms": ms,
+                "search_id": sid,
             })
         elif self.path == "/api/apply":
             form = cgi.FieldStorage(
@@ -157,10 +173,10 @@ def _warmup():
 
     print("[warmup] 预载 LUT tables...")
     preload_all_luts()
-    print("[warmup] 完成 ✓")
+    print("[warmup] 完成 [OK]")
 
 
 if __name__ == "__main__":
     _warmup()
-    print("\n🚀 ProjectLUT → http://localhost:8765")
+    print("\n  ProjectLUT -> http://localhost:8765")
     HTTPServer(("0.0.0.0", 8765), Handler).serve_forever()

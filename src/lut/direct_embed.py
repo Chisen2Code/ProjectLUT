@@ -266,6 +266,15 @@ def log_click(search_id: str, preset_index: int) -> bool:
     return True
 
 
+def embed_query(query: str) -> list[float]:
+    """返回 query 的 bge-m3 嵌入向量"""
+    body = json.dumps({"model": EMBED_MODEL, "input": [query]}).encode()
+    req = urllib.request.Request(OLLAMA_EMBED_URL, body,
+                                 {"Content-Type": "application/json"})
+    resp = json.loads(urllib.request.urlopen(req).read())
+    return resp["embeddings"][0]
+
+
 # ── CLI ──────────────────────────────────────────────
 
 if __name__ == "__main__":
