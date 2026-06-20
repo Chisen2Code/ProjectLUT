@@ -14,13 +14,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 import cgi
+import io
 import json
 import tempfile
 import time
 import mimetypes
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-from lut.direct_embed import build_index, search, get_stats, get_cached_preset_names, embed_query, dynamic_cut, log_search_json
+from PIL import Image as PILImage
+
+from lut.direct_embed import build_index, search, get_stats, get_cached_preset_names, embed_query, dynamic_cut, log_search_json, log_click
 from lut.parser import load_presets
 from lut.processor import apply_lut, preload_all_luts
 
@@ -29,6 +32,9 @@ _preset_cache = {}
 
 # 最近一次搜索的 query 向量缓存
 _last_query_vec = [None]  # container, stores [query_vector] of last search
+
+# 最近一次上传的图片缓存（供缩略图端点使用）
+_LAST_IMAGE_PATH = Path(tempfile.gettempdir()) / "projectlut_last_input.jpg"
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -43,6 +49,44 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"ok": True})
         elif self.path == "/api/stats":
             self.send_json(get_stats())
+        elif self.path.startswith("/api/preview/"):
+            parts = self.path.split("/")
+            if len(parts) < 4 or not parts[3].isdigit():
+                self.send_json({"error": "invalid index"})
+                return
+            preset_index = int(parts[3])
+
+            if not _LAST_IMAGE_PATH.exists():
+                self.send_json({"error": "请先上传图片"})
+                return
+
+            sorted_names = sorted(_preset_cache.keys())
+            if preset_index < 0 or preset_index >= len(sorted_names):
+                self.send_json({"error": "index out of range"})
+                return
+            preset_name = sorted_names[preset_index]
+            preset = _preset_cache.get(preset_name)
+            if preset is None:
+                self.send_json({"error": "preset not found"})
+                return
+
+            # 生成缩略图
+            tmp_out = tempfile.mktemp(suffix=".jpg")
+            try:
+                apply_lut(str(_LAST_IMAGE_PATH), preset, tmp_out)
+                img = PILImage.open(tmp_out)
+                img.thumbnail((200, 200))
+                buf = io.BytesIO()
+                img.save(buf, "JPEG", quality=80)
+                jpg_bytes = buf.getvalue()
+                self.send_response(200)
+                self.send_header("Content-Type", "image/jpeg")
+                self.send_header("Content-Length", str(len(jpg_bytes)))
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(jpg_bytes)
+            finally:
+                Path(tmp_out).unlink(missing_ok=True)
         else:
             # 静态文件
             fpath = self.path.lstrip("/")
@@ -79,6 +123,13 @@ class Handler(BaseHTTPRequestHandler):
                 "ms": ms,
                 "search_id": sid,
             })
+        elif self.path == "/api/click":
+            length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(length))
+            sid = body.get("search_id", "")
+            idx = body.get("preset_index", -1)
+            ok = log_click(sid, idx)
+            self.send_json({"ok": ok})
         elif self.path == "/api/apply":
             form = cgi.FieldStorage(
                 fp=self.rfile, headers=self.headers,
@@ -88,6 +139,8 @@ class Handler(BaseHTTPRequestHandler):
             preset_name = form.getfirst("preset_name", "")
             img_item = form["image"]
             img_bytes = img_item.file.read() if isinstance(img_item, cgi.FieldStorage) and hasattr(img_item, "file") else b""
+            if img_bytes:
+                _LAST_IMAGE_PATH.write_bytes(img_bytes)
 
             if not img_bytes:
                 self.send_json({"error": "未上传图片"})
