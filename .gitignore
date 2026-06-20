@@ -39,6 +39,23 @@ LUT预设1/
 .DS_Store
 Thumbs.db
 
+# Serve runtime logs
+# Search log data
+data/search_log/
+
+# Serve runtime logs
+_serve.*
+
+# Test artifacts (root-level)
+test_image.jpg
+test_result.jpg
+test_playwright.jpg
+# Search log data
+data/search_log/
+
+# Serve runtime logs
+_serve.*
+
 # AnythingLLM
 anything-llm/data/
 
