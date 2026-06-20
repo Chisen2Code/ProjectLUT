@@ -118,7 +118,7 @@ class Handler(BaseHTTPRequestHandler):
             sid = log_search_json(query, query_vec, top, ms)
 
             self.send_json({
-                "results": [{"name": n, "score": s, "index": idx} for n, s, idx in top],
+                "results": [{"name": n, "score": s, "index": idx, "preset_name": n} for n, s, idx in top],
                 "count": len(top),
                 "ms": ms,
                 "search_id": sid,

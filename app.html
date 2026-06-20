@@ -253,6 +253,47 @@
   .btn-save:hover { background: #15803d; }
 
   input[type="file"] { display: none; }
+
+  .preview-strip {
+    margin-top: 10px;
+    border-top: 1px solid #22252e;
+    padding-top: 10px;
+  }
+  .preview-grid {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 4px 0;
+  }
+  .preview-grid .cell {
+    flex-shrink: 0;
+    width: 60px;
+    height: 60px;
+    border-radius: 3px;
+    border: 2px solid transparent;
+    cursor: pointer;
+    background: #14171d;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color 0.1s;
+  }
+  .preview-grid .cell:hover {
+    border-color: #3b82f6;
+  }
+  .preview-grid .cell.selected {
+    border-color: #2563eb;
+  }
+  .preview-grid .cell img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .preview-grid .cell .placeholder {
+    font-size: 10px;
+    color: #4b5563;
+  }
 </style>
 </head>
 <body>
@@ -289,6 +330,11 @@
       <ul class="results" id="results"></ul>
       <div class="status" id="status"></div>
 
+      <div class="preview-strip" id="previewStrip" style="display:none">
+        <div class="panel-title">预览</div>
+        <div class="preview-grid" id="previewGrid"></div>
+      </div>
+
       <div class="actions">
         <button class="btn-apply" id="applyBtn" onclick="doApply()" disabled>应用选中的 LUT 到图片</button>
       </div>
@@ -323,6 +369,9 @@
 </div>
 
 <script>
+  // 自动检测基础 URL —— file:// 协议下指向本地服务端
+  const API_BASE = location.protocol === "file:" ? "http://localhost:8765" : "";
+
   let currentFile = null;
   let selectedPresetName = null;
 
@@ -363,11 +412,17 @@
   });
   fileClear.addEventListener("click", () => {
     currentFile = null;
+    selectedPresetName = null;
+    window._lastSearchId = null;
+    window._lastClickedIndex = undefined;
     fileInfo.style.display = "none";
     origImg.src = "";
     origImg.style.display = "none";
     origEmpty.style.display = "block";
     fileInput.value = "";
+    document.getElementById("previewStrip").style.display = "none";
+    resultsEl.innerHTML = "";
+    statusEl.textContent = "";
     updateApplyBtn();
   });
 
@@ -402,7 +457,7 @@
 
     try {
       const t0 = performance.now();
-      const resp = await fetch("/api/search", {
+      const resp = await fetch(API_BASE + "/api/search", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({ query: query, top_n: 5 })
@@ -412,6 +467,7 @@
 
       if (!data.results || data.results.length === 0) {
         resultsEl.innerHTML = "<li style='color:#999;cursor:default'>没有匹配结果</li>";
+        document.getElementById("previewStrip").style.display = "none";
         statusEl.textContent = "";
         return;
       }
@@ -436,13 +492,63 @@
 
         li.onclick = () => {
           selectedPresetName = item.preset_name;
+          window._lastClickedIndex = item.index;
           [...resultsEl.children].forEach(x => x.classList.remove("selected"));
           li.classList.add("selected");
           updateApplyBtn();
         };
         resultsEl.appendChild(li);
       });
-      statusEl.textContent = "✓ " + data.results.length + " 个匹配（本地 " + (performance.now() - t0).toFixed(0) + " ms）";
+      window._lastSearchId = data.search_id;
+      statusEl.textContent = `⚡ ${data.ms}ms · 共 ${data.count} 个匹配`;
+
+      // Preview grid
+      const grid = document.getElementById("previewGrid");
+      const strip = document.getElementById("previewStrip");
+      grid.innerHTML = "";
+      strip.style.display = "block";
+
+      data.results.forEach((item, idx) => {
+        const cell = document.createElement("div");
+        cell.className = "cell";
+        cell.dataset.index = item.index;
+        cell.dataset.name = item.preset_name;
+        cell.innerHTML = `<span class="placeholder">${idx+1}</span>`;
+        cell.onclick = () => {
+          window._lastClickedIndex = item.index;
+          selectedPresetName = item.preset_name;
+          document.querySelectorAll(".cell").forEach(c => c.classList.remove("selected"));
+          cell.classList.add("selected");
+          updateApplyBtn();
+        };
+        grid.appendChild(cell);
+      });
+
+      // Streaming load (max 3 concurrent)
+      const cells = grid.querySelectorAll(".cell");
+      let loaded = 0;
+      const CONCURRENCY = 3;
+
+      function loadNext() {
+        if (loaded >= cells.length) return;
+        const cell = cells[loaded];
+        const idx = cell.dataset.index;
+        loaded++;
+        fetch(API_BASE + `/api/preview/${idx}`)
+          .then(r => {
+            if (!r.ok) throw new Error(r.status);
+            return r.blob();
+          })
+          .then(blob => {
+            const url = URL.createObjectURL(blob);
+            cell.innerHTML = `<img src="${url}" alt="preview">`;
+          })
+          .catch(() => {
+            cell.innerHTML = `<span class="placeholder">✗</span>`;
+          });
+      }
+
+      for (let i = 0; i < CONCURRENCY; i++) loadNext();
     } catch (err) {
       statusEl.textContent = "✗ 搜索失败: " + err.message;
       statusEl.classList.add("err");
@@ -470,8 +576,12 @@
       const fd = new FormData();
       fd.append("preset_name", selectedPresetName);
       fd.append("image", currentFile);
+      if (window._lastSearchId && window._lastClickedIndex !== undefined) {
+        fd.append("search_id", window._lastSearchId);
+        fd.append("preset_index", window._lastClickedIndex);
+      }
 
-      const resp = await fetch("/api/apply", {
+      const resp = await fetch(API_BASE + "/api/apply", {
         method: "POST",
         body: fd
       });
