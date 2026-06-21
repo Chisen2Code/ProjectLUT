@@ -245,6 +245,23 @@ LightRAG 保留给论文 RAG 阶段，Demo 不用。
 
 **遗留：** Log 管线使用 Cineon 通用曲线，特定摄影机 Log 空间不匹配导致部分 LUT 输出偏灰偏雾。需引入 `log_curve` 可配置字段方能根治，当前无业务人员标注，搁置。
 
+### Session #11 (2026-06-21): 项目自查 + SQLite 弃用 + 统计面板
+
+**文件整理：**
+1. 根目录清理：`test_image.jpg`、`test_result.jpg`、`_serve.*` 删除
+2. scripts 分级：`scripts/active/`（5 入口）+ `scripts/archive/`（13 历史）
+3. 遗留代码归档：`embedder.py`/`matcher.py` → `scripts/archive/`
+4. 过时文档归档：3 篇 LightRAG 参考 → `docs/archive/`
+5. 旧 plans/specs 删除：6 个 `2026-06-16-*` 文件
+
+**代码清理：**
+1. `direct_embed.py` — `sqlite3` 依赖彻底移除，删除 `_init_db()`/`log_search()`/`_DB_PATH`，`get_stats()` 改为 JSON 文件聚合
+2. `docs/architecture.md` — 重写，去掉 LightRAG/LanceDB 残留，反映当前 5 层架构
+
+**新功能：**
+1. `app.html` 左下角新增统计面板：总搜索数、平均耗时、top-6 热门 query
+2. 数据来自 `/api/stats`（基于 JSON 日志聚合）
+
 
 ## Python 环境
 
