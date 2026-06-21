@@ -6,7 +6,6 @@ numpy 余弦相似度检索。适用于短标签语义匹配场景。
 """
 
 import json
-import sqlite3
 import time
 import urllib.request
 from datetime import datetime
@@ -23,8 +22,6 @@ _time = time
 OLLAMA_EMBED_URL = "http://localhost:11434/api/embed"
 EMBED_MODEL = "bge-m3:latest"
 STORE_DIR = Path(".lut_vectors")
-_DB_PATH = STORE_DIR / "search.db"
-
 # 进程内缓存 —— 避免每次调用都重新读文件
 _cached_vectors = None
 _cached_texts = None
@@ -32,61 +29,49 @@ _cached_ids = None  # 预设唯一 ID（= name，平行于 texts）
 _cached_vectors_norm = None  # 预计算 L2 范数后的向量 (n, 1024)
 
 
-def _init_db():
-    """初始化搜索日志表"""
-    _DB_PATH.parent.mkdir(exist_ok=True)
-    with sqlite3.connect(str(_DB_PATH)) as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS search_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                query TEXT NOT NULL,
-                top_results TEXT NOT NULL,
-                result_count INTEGER DEFAULT 0,
-                duration_ms INTEGER DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-
-
-def log_search(query: str, results: list[tuple[str, float]], duration_ms: int):
-    """记录搜索日志"""
-    _init_db()
-    data = json.dumps([{"name": r[0], "score": r[1]} for r in results], ensure_ascii=False)
-    with sqlite3.connect(str(_DB_PATH)) as conn:
-        conn.execute(
-            "INSERT INTO search_log (query, top_results, result_count, duration_ms) VALUES (?, ?, ?, ?)",
-            (query, data, len(results), duration_ms),
-        )
-
-
-def get_stats(cold_threshold: int = 0) -> dict:
-    """返回统计信息"""
-    _init_db()
-    with sqlite3.connect(str(_DB_PATH)) as conn:
-        total = conn.execute("SELECT COUNT(*) FROM search_log").fetchone()[0]
-        top_queries = conn.execute(
-            "SELECT query, COUNT(*) as cnt FROM search_log GROUP BY query ORDER BY cnt DESC LIMIT 10"
-        ).fetchall()
-        cold = conn.execute(
-            "SELECT query, result_count FROM search_log WHERE result_count <= ? ORDER BY created_at DESC LIMIT 20",
-            (cold_threshold,),
-        ).fetchall()
+def get_stats() -> dict:
+    """从 JSON 搜索日志聚合统计"""
+    _LOG_DIR.mkdir(parents=True, exist_ok=True)
+    logs = sorted(_LOG_DIR.glob("*.json"))
+    total = len(logs)
+    query_count = {}
+    total_ms = 0
+    for f in logs:
+        try:
+            with open(f, encoding="utf-8") as fh:
+                data = json.load(fh)
+            q = data.get("query", "")
+            query_count[q] = query_count.get(q, 0) + 1
+            total_ms += data.get("duration_ms", 0)
+        except Exception:
+            pass
+    top = sorted(query_count.items(), key=lambda x: -x[1])[:10]
+    avg_ms = round(total_ms / total, 1) if total > 0 else 0
     return {
         "total": total,
-        "top_queries": top_queries,
-        "cold_queries": cold,
+        "top_queries": [(q, c) for q, c in top],
+        "avg_ms": avg_ms,
     }
 
 
 def get_history(n: int = 20) -> list[dict]:
-    """返回最近 n 条搜索记录"""
-    _init_db()
-    with sqlite3.connect(str(_DB_PATH)) as conn:
-        rows = conn.execute(
-            "SELECT query, result_count, duration_ms, created_at FROM search_log ORDER BY id DESC LIMIT ?",
-            (n,),
-        ).fetchall()
-    return [{"query": r[0], "count": r[1], "ms": r[2], "at": r[3]} for r in rows]
+    """返回最近 n 条搜索记录（从 JSON 读取）"""
+    _LOG_DIR.mkdir(parents=True, exist_ok=True)
+    logs = sorted(_LOG_DIR.glob("*.json"), reverse=True)[:n]
+    result = []
+    for f in logs:
+        try:
+            with open(f, encoding="utf-8") as fh:
+                data = json.load(fh)
+            result.append({
+                "query": data.get("query", ""),
+                "count": data.get("top_count", 0),
+                "ms": data.get("duration_ms", 0),
+                "at": data.get("timestamp", ""),
+            })
+        except Exception:
+            pass
+    return result
 
 
 def _embed_batch(texts: list[str], batch_size: int = 1) -> np.ndarray:
@@ -212,8 +197,6 @@ def search(query: str, top_n: int = 30) -> list[tuple[str, float, int]]:
         top_idx = top_idx[np.argsort(-scores[top_idx])]
 
     results = [(ids[i], float(scores[i]), int(i)) for i in top_idx]
-    _elapsed = int((_time.perf_counter() - _t0) * 1000)
-    log_search(query, results, _elapsed)
     return results
 
 

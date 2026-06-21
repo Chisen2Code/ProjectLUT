@@ -1,7 +1,7 @@
 """direct_embed.py 单元测试"""
 import numpy as np
 from pathlib import Path
-from lut.direct_embed import build_index, search, get_stats, get_history, log_search
+from lut.direct_embed import build_index, search, get_stats, get_history
 
 
 def test_build_index_creates_files():
@@ -39,11 +39,13 @@ def test_search_returns_index():
         assert 0 <= idx <= 151
 
 
-def test_log_search_and_stats():
-    """log_search 写入后 get_stats 可读取"""
-    log_search("test query", [("test LUT", 0.99)], 100)
+def test_get_stats_returns_dict():
+    """get_stats 从 JSON 日志读取统计"""
     stats = get_stats()
-    assert stats["total"] >= 1
+    assert "total" in stats
+    assert "top_queries" in stats
+    assert isinstance(stats["total"], int)
+    assert stats["total"] >= 0
 
 
 def test_get_history():

@@ -254,6 +254,36 @@
 
   input[type="file"] { display: none; }
 
+  /* ---------- 统计面板 ---------- */
+  .stats-panel {
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: #14171d;
+    border-radius: 4px;
+    font-size: 12px;
+  }
+  .stats-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 6px;
+    color: #9ca3af;
+  }
+  .stats-row:last-child { margin-bottom: 0; }
+  .stats-item { white-space: nowrap; }
+  .stats-item b { color: #e6e8ec; font-weight: 500; }
+  .stats-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .stats-tag {
+    background: #1f222b;
+    padding: 1px 6px;
+    border-radius: 3px;
+    color: #9ca3af;
+    font-size: 11px;
+  }
+
   .preview-strip {
     margin-top: 10px;
     border-top: 1px solid #22252e;
@@ -337,6 +367,19 @@
 
       <div class="actions">
         <button class="btn-apply" id="applyBtn" onclick="doApply()" disabled>应用选中的 LUT 到图片</button>
+      </div>
+
+      <!-- 统计面板 -->
+      <div class="stats-panel" id="statsPanel">
+        <div class="panel-title">搜索统计</div>
+        <div class="stats-row">
+          <span class="stats-item">🔍 总搜索: <b id="statTotal">—</b></span>
+          <span class="stats-item">⚡ 平均耗时: <b id="statAvgMs">—</b>ms</span>
+        </div>
+        <div class="stats-row">
+          <span>热门:</span>
+          <span class="stats-tags" id="statTopQueries"></span>
+        </div>
       </div>
     </div>
 
@@ -441,6 +484,28 @@
     statusEl.classList.remove("err");
     updateApplyBtn();
   }
+
+  // ---------- 统计面板 ----------
+  async function loadStats() {
+    try {
+      const resp = await fetch(API_BASE + "/api/stats");
+      if (!resp.ok) return;
+      const data = await resp.json();
+      document.getElementById("statTotal").textContent = data.total || 0;
+      document.getElementById("statAvgMs").textContent = data.avg_ms ?? "—";
+      const tags = document.getElementById("statTopQueries");
+      tags.innerHTML = "";
+      if (data.top_queries) {
+        for (const [q, c] of data.top_queries.slice(0, 6)) {
+          const tag = document.createElement("span");
+          tag.className = "stats-tag";
+          tag.textContent = `${q} (${c})`;
+          tags.appendChild(tag);
+        }
+      }
+    } catch (_) {}
+  }
+  loadStats();
 
   // ---------- 搜索 ----------
   queryInput.addEventListener("keydown", e => {

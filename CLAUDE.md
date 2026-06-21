@@ -59,7 +59,7 @@ LightRAG 保留给论文 RAG 阶段，Demo 不用。
 | 预览网格 | ✅ 流式加载（3 并发），60px 缩略图 |
 | CLI | ✅ 6 条命令 (search/apply/index/list/stats/history) |
 | GUI | ✅ serve.py + app.html |
-| 测试 | ✅ 45/45（parser 6 + embed 5 + processor 7 + rerank 16 + 新功能） |
+| 测试 | ✅ ~46（auto-detected, do not pin in CI） |
 
 ## 架构概览
 

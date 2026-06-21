@@ -1,34 +1,57 @@
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': { 'primaryTextColor': '#1a1a1a', 'lineColor': '#37474f' }}}%%
 flowchart LR
-    %% 样式定义（规范配色）
-    classDef user fill:#e3f2fd,stroke:#1976d2,stroke-width:1px
-    classDef process fill:#f3e5f5,stroke:#7b1fa2,stroke-width:1px
-    classDef data fill:#e8f5e8,stroke:#388e3c,stroke-width:1px
-    classDef model fill:#fff3e0,stroke:#f57c00,stroke-width:1px
-    classDef output fill:#fce4ec,stroke:#c2185b,stroke-width:1px
+    classDef user fill:#e3f2fd,stroke:#1976d2
+    classDef process fill:#f3e5f5,stroke:#7b1fa2
+    classDef data fill:#e8f5e8,stroke:#388e3c
+    classDef model fill:#fff3e0,stroke:#f57c00
 
-    %% 主流程
-    User[用户自然语言]:::user --> CLI[CLI]:::process
-    CLI --> Embedder[Embedder]:::process
-    Embedder --> Matcher[Matcher]:::process
-    Matcher --> Output[输出 LUT 名称]:::output
+    User[用户自然语言]:::user --> FE[serve.py / app.html]:::process
+    FE --> Search[search 🔍]:::process
+    FE --> Apply[apply_lut 🎨]:::process
 
-    %% 下方模块
-    P[parser.py<br/>152个.cube]:::data --> CLI
-    DB[(LanceDB 向量库)]:::data --> Matcher
-    Ollama[Ollama<br/>Qwen3-8b]:::model --> Matcher
+    Search --> Embed[embed_query<br/>bge-m3]:::model
+    Embed --> Cos[余弦相似度<br/>numpy]:::process
+    Cos --> Cut[dynamic_cut]:::process
+    Cut --> Rule[rule_filter]:::process
+    Rule --> Log[log_search_json<br/>data/search_log/]:::data
+    Rule --> FE
+
+    Apply --> Pipe[processor.py<br/>sRGB/Log管线]:::process
+    Pipe --> FE
+
+    VEC[(vectors.npy<br/>152×1024)]:::data --- Cos
+    PRE[(Preset 模型<br/>parser.py)]:::data --- Apply
+
+    classDef output fill:#fce4ec,stroke:#c2185b
 ```
 
 ## 模块说明
 
-| 节点 | 类型 | 职责 |
+| 模块 | 文件 | 职责 |
 |------|------|------|
-| **用户自然语言** | 入口 | 用户用日常语言描述想要的调色效果，如"我想要冷色调胶片感"或"明亮温暖秋天氛围" |
-| **CLI** | 流程 | 命令行入口，接收用户输入，调度下游模块，最终输出匹配结果 |
-| **Embedder** | 流程 | 调用 Ollama bge-m3 模型，将用户输入和 LUT 预设名称分别向量化，统一语义空间 |
-| **Matcher** | 流程 | 计算用户输入向量与 152 个 LUT 向量的余弦相似度，排序返回 Top-N 匹配结果 |
-| **输出 LUT 名称** | 输出 | 展示匹配到的 LUT 预设名称列表，按相似度降序 |
-| **parser.py** | 数据 | 解析 `LUT预设1/` 下全部 .cube 文件，提取预设名称、色彩空间（log/709）、作者等元数据 |
-| **LanceDB 向量库** | 存储 | 嵌入式向量数据库，存储 152 个预设名称的向量，支持快速相似度检索，零配置 |
-| **Ollama** | 模型 | 本地推理服务：bge-m3 负责嵌入向量化，qwen3:8b 预留在 Matcher 需要语义理解时介入 |
+| **HTTP 服务** | `serve.py` | ThreadingHTTPServer，路由 /api/search|apply|click|preview|stats|ping |
+| **语义检索** | `direct_embed.py` | bge-m3 嵌入 + numpy 余弦相似度，返回 `(preset_id, score, index)` |
+| **动态截断** | `direct_embed.py:dynamic_cut()` | 0.3 底线 + 0.15 陡降 + 6 上限 |
+| **规则纠偏** | `rerank.py:rule_filter()` | 关键词检测 6 意图，排除 contrast/saturation/tone 不匹配结果 |
+| **日志** | `direct_embed.py` | JSON 文件存储，query_vector 持久化 + clicked_preset_id 回传 |
+| **调色** | `processor.py` | sRGB 直查 / Log 管线（Cineon）+ 高光衰减 |
+| **解析** | `parser.py` | .cube → Preset 模型，含 contrast/saturation/tone 元数据 |
+| **前端** | `app.html` | 上传/搜索/预览网格/统计面板 |
+| **AI 推理** | Ollama bge-m3:latest | 1024-dim 嵌入，单次搜索 ~4.5s |
+
+## 数据流
+
+```
+query → embed_query(bge-m3) → 余弦 vs vectors.npy(152)
+  → dynamic_cut(6) → rule_filter(6意图) → log_search_json
+  → frontend renders results + preview grid
+  → user selects + apply_lut(srgb|log_cinema) → JPEG output
+```
+
+## 核心路径（不可移动）
+
+```
+serve.py → src/lut/{direct_embed,parser,processor,rerank,cli}.py
+         → app.html → LUT预设1/ → data/search_log/
+```
