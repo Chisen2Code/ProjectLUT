@@ -19,19 +19,20 @@ import json
 import tempfile
 import time
 import mimetypes
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 from PIL import Image as PILImage
 
 from lut.direct_embed import build_index, search, get_stats, get_cached_preset_names, embed_query, dynamic_cut, log_search_json, log_click
 from lut.parser import load_presets
 from lut.processor import apply_lut, preload_all_luts
+from lut.rerank import rule_filter
 
-# 预设名 → Preset 对象缓存
+# preset_id → Preset 对象缓存
 _preset_cache = {}
 
-# 最近一次搜索的 query 向量缓存
-_last_query_vec = [None]  # container, stores [query_vector] of last search
+# 按 ID 排序的预设列表（供预览 index 查找用）
+_sorted_presets: list = []
 
 # 最近一次上传的图片缓存（供缩略图端点使用）
 _LAST_IMAGE_PATH = Path(tempfile.gettempdir()) / "projectlut_last_input.jpg"
@@ -52,22 +53,20 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path.startswith("/api/preview/"):
             parts = self.path.split("/")
             if len(parts) < 4 or not parts[3].isdigit():
-                self.send_json({"error": "invalid index"})
+                self.send_error(400, "invalid index")
                 return
             preset_index = int(parts[3])
 
             if not _LAST_IMAGE_PATH.exists():
-                self.send_json({"error": "请先上传图片"})
+                self.send_error(400, "请先上传图片")
                 return
 
-            sorted_names = sorted(_preset_cache.keys())
-            if preset_index < 0 or preset_index >= len(sorted_names):
-                self.send_json({"error": "index out of range"})
+            if preset_index < 0 or preset_index >= len(_sorted_presets):
+                self.send_error(404, "index out of range")
                 return
-            preset_name = sorted_names[preset_index]
-            preset = _preset_cache.get(preset_name)
+            preset = _sorted_presets[preset_index]
             if preset is None:
-                self.send_json({"error": "preset not found"})
+                self.send_error(404, "preset not found")
                 return
 
             # 生成缩略图
@@ -98,61 +97,67 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         if self.path == "/api/search":
-            length = int(self.headers.get("Content-Length", 0))
-            body = json.loads(self.rfile.read(length))
-            query = body.get("query", "")
-            t0 = time.perf_counter()
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(length))
+                query = body.get("query", "")
+                t0 = time.perf_counter()
 
-            # 嵌入 + 搜索
-            query_vec = embed_query(query)
-            _last_query_vec[0] = query_vec
-            raw_results = search(query, top_n=30)
-            ms = int((time.perf_counter() - t0) * 1000)
+                query_vec = embed_query(query)
+                raw_results = search(query, top_n=30)
+                ms = int((time.perf_counter() - t0) * 1000)
 
-            # 动态截断 + 取 index
-            cut = dynamic_cut([(n, s) for n, s, _ in raw_results])
-            name_to_idx = {n: idx for n, _, idx in raw_results}
-            top = [(n, s, name_to_idx[n]) for n, s in cut]
+                cut = dynamic_cut([(pid, s) for pid, s, _ in raw_results], max_count=6, min_score=0.4)
+                cut = rule_filter(cut, query, _preset_cache)
+                pid_to_idx = {pid: idx for pid, _, idx in raw_results}
+                top = [(pid, s, pid_to_idx[pid]) for pid, s in cut]
 
-            # 写 JSON 日志
-            sid = log_search_json(query, query_vec, top, ms)
+                sid = log_search_json(query, query_vec, top, ms)
 
-            self.send_json({
-                "results": [{"name": n, "score": s, "index": idx, "preset_name": n} for n, s, idx in top],
-                "count": len(top),
-                "ms": ms,
-                "search_id": sid,
-            })
+                self.send_json({
+                    "results": [{"preset_id": pid, "score": s, "index": idx} for pid, s, idx in top],
+                    "count": len(top),
+                    "ms": ms,
+                    "search_id": sid,
+                })
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                self.send_json({"error": str(e)})
         elif self.path == "/api/click":
-            length = int(self.headers.get("Content-Length", 0))
-            body = json.loads(self.rfile.read(length))
-            sid = body.get("search_id", "")
-            idx = body.get("preset_index", -1)
-            ok = log_click(sid, idx)
-            self.send_json({"ok": ok})
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(length))
+                sid = body.get("search_id", "")
+                pid = body.get("preset_id", "")
+                ok = log_click(sid, pid) if sid and pid else False
+                self.send_json({"ok": ok})
+            except Exception as e:
+                self.send_json({"ok": False, "error": str(e)})
         elif self.path == "/api/apply":
             form = cgi.FieldStorage(
                 fp=self.rfile, headers=self.headers,
                 environ={"REQUEST_METHOD": "POST",
                          "CONTENT_TYPE": self.headers.get("Content-Type")}
             )
-            preset_name = form.getfirst("preset_name", "")
+            preset_id = form.getfirst("preset_id", "")
+            search_id = form.getfirst("search_id", "")
             img_item = form["image"]
             img_bytes = img_item.file.read() if isinstance(img_item, cgi.FieldStorage) and hasattr(img_item, "file") else b""
             if img_bytes:
                 _LAST_IMAGE_PATH.write_bytes(img_bytes)
 
             if not img_bytes:
-                self.send_json({"error": "未上传图片"})
+                self.send_error(400, "未上传图片")
                 return
-            if not preset_name:
-                self.send_json({"error": "未指定预设"})
+            if not preset_id:
+                self.send_error(400, "未指定预设")
                 return
 
-            # 查找预设
-            preset = _preset_cache.get(preset_name)
+            # 查找预设（唯一真相 = preset_id）
+            preset = _preset_cache.get(preset_id)
             if preset is None:
-                self.send_json({"error": f"未找到预设: {preset_name}"})
+                self.send_error(404, f"未找到预设: {preset_id}")
                 return
 
             # 临时文件处理
@@ -165,7 +170,14 @@ class Handler(BaseHTTPRequestHandler):
                 t0 = time.perf_counter()
                 apply_lut(tmp_in, preset, tmp_out)
                 elapsed = int((time.perf_counter() - t0) * 1000)
-                print(f"  [apply] {preset_name} → {elapsed}ms")
+                print(f"  [apply] {preset_id} → {elapsed}ms")
+
+                # 点击回传
+                if search_id and preset_id:
+                    try:
+                        log_click(search_id, preset_id)
+                    except Exception:
+                        pass
 
                 out_bytes = Path(tmp_out).read_bytes()
                 self.send_response(200)
@@ -187,6 +199,15 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
+
+    def send_error(self, code: int, msg: str):
+        body = json.dumps({"error": msg}).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(body)
 
     def send_json(self, data):
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
@@ -215,13 +236,17 @@ class Handler(BaseHTTPRequestHandler):
 
 def _warmup():
     """启动预热：构建索引 + 预载全部 LUT"""
+    global _sorted_presets
     print("[warm] 构建向量索引...")
     build_index()
 
     print("[warmup] 加载预设...")
     presets = load_presets()
+    if not presets:
+        raise RuntimeError("未加载到任何预设，请检查 LUT预设1/ 目录")
     for p in presets:
-        _preset_cache[p.name] = p
+        _preset_cache[p.id] = p
+    _sorted_presets = sorted(presets, key=lambda p: p.id)
     print(f"[warmup] 共 {len(presets)} 个预设")
 
     print("[warmup] 预载 LUT tables...")
@@ -232,4 +257,4 @@ def _warmup():
 if __name__ == "__main__":
     _warmup()
     print("\n  ProjectLUT -> http://localhost:8765")
-    HTTPServer(("0.0.0.0", 8765), Handler).serve_forever()
+    ThreadingHTTPServer(("0.0.0.0", 8765), Handler).serve_forever()

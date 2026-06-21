@@ -15,17 +15,14 @@ python serve.py                    # GUI 服务端 → 浏览器 app.html
 ## 项目目录
 
 ```
-src/lut/       parser | direct_embed | processor | cli | embedder | matcher
-tests/         15 tests (parser 6 + direct_embed 5 + processor 4)
-docs/          architecture | reference/ (LightRAG/LUT调研) | superpowers/ (specs+plans)
-               search-analytics-design.md
+src/lut/       parser | direct_embed | processor | cli
+tests/         18 tests (parser 6 + embed 5 + processor 7)
+docs/          architecture | color-pipeline | reference/ (论文/调研) | superpowers/
+scripts/       运维脚本 (14 个 _*.py + _start.ps1 + test_upload.html)
 serve.py       GUI API 服务 (端口 8765)
 app.html       浏览器 GUI
-_serve.*       服务日志/pid/err
-_probe/_verify/_e2e/_check/_test_*  运维与验证脚本 (~10 个)
-_start.ps1     PowerShell 启动脚本
-test_upload.html  上传隔离测试页
-pyproject.toml    hatchling + lut 入口
+pyproject.toml hatchling + lut 入口
+LUT预设1/      152 个 .cube LUT 文件
 ```
 
 ## 本地 AI 基础设施
@@ -117,6 +114,81 @@ LightRAG 保留给论文 RAG 阶段，Demo 不用。
 2. serve.py 进程管理 — 会话中后台进程多次被回收，最终用 `run_in_background` + `Start-Process` 双方案稳定
 3. 统计框 — 右上角显示检索次数/上次耗时，`/api/stats` 端点
 4. 下载按钮 — `URL.createObjectURL` + `body.appendChild(a)` 避免浏览器拦截
+
+### Session #6 (2026-06-18~19): 色彩管线修复
+
+**产出：** 完整的 sRGB→Linear→Log→3D LUT→Linear→sRGB 管线，高光衰减，GIF 拦截，轻量色彩验证。
+
+**改动：**
+1. `parser.py` — Preset 新增 `lut_type`（srgb/log_cinema）、`domain_min/max` 字段；`read_cube_rgb()` 补 DOMAIN header 解析
+2. `processor.py` — 删除 `_log_to_709()`，新增 5 个函数：
+   - `_srgb_to_linear()` / `_linear_to_srgb()`：正确分段 sRGB EOTF/OETF
+   - `_linear_to_log()` / `_log_to_linear()`：Cineon 风格 log 编解码
+   - `_luma_attenuation()`：亮度 >0.85 时衰减 R/G 通道 ≥25%
+3. `tests/test_processor.py` — 改用裁切检测 + Hasler-Susstrunk 色彩丰富度比值验证，新增 3 个测试
+4. `docs/color-pipeline.md` — 管线设计文档
+
+**关键决策：** log 曲线采用 Cineon 通用默认，不假设特定摄影机 Log 曲线。后续可扩展为可配置。
+
+**验证：** 18/18 tests ✅，裁切检测和色彩丰富度比值可在 CI 中自动拦截溢橙回归。
+
+### Session #7 (2026-06-19~20): 语义搜索走查 + 「黑白」搜索定位
+
+**事件：** 用户搜「黑白」的结果与 Agent 主观推理不一致，要求排查根因。
+
+**排查结论：**
+1. bge-m3 搜索管道工作正常 —「黑白」无精确匹配，回退到字级别「白」→ 人像冷白 / cold冷白 / 漂白等
+2. **Agent 错误**：未跑实际管道，而是凭「默片时代 = 黑白电影」推理回答，实际套图验证该 LUT 输出是蓝青暗调，非黑白
+3. 库缺口：152 个预设无一真正黑白/去色 LUT
+
+**修复：** 无代码改动，属认知流程修正 — Agent 回答前必须先跑实际管道验证，不能凭字面推理。
+**修正：** `app.html` 加 `API_BASE` 动态检测 `file://` 协议，支持直接双击打开。
+
+### Session #8 (2026-06-20~21): 搜索分析 v2 — JSON 日志 + 动态截断 + 预览网格
+
+**事件：** 引入搜索分析 v2（JSON 日志固化、动态截断、点击追踪、百图预览网格），但风格管线稳定性下降。
+
+**新增功能：**
+1. `data/search_log/*.json` — 搜索日志固化，query_vector 持久化，`clicked_index` 回写
+2. `dynamic_cut()` — 复合截断（0.3 底线 + 0.15 陡降 + 10 上限）
+3. `⚡ Nms · 共 M 个匹配` — 前端状态条
+4. 百图预览网格 — 流式加载（3 并发），点击等价选中预设
+5. `/api/click` — 点击回传端点
+6. `/api/preview/{index}` — 200px 缩略图端点
+
+**问题：** 搜索 API 在 curl/bash 下因 HTTPS_PROXY 环境变量阻塞导致空响应；Playwright 直连正常（29/29 tests ✅）。上传的测试图容量过小（1.8KB）且内容简单。
+
+**教训：** 核心管线稳定性 > 新功能。新的 try/except 已补，但验证手段应统一为 Playwright 而非受代理干扰的 curl。
+
+### Session #9 (2026-06-21): 标识体系重构 + 缺陷修复
+
+**事件：** preset 标识体系不统一（name/text/index 三套混用），导致 apply 失效、预览错位、索引不对齐。全面重构为 `preset_id` 单一真相。
+
+**重构内容：**
+1. `parser.py` — Preset 新增 `id` 字段（`id=name`），dataclass 字段排序修正
+2. `direct_embed.py` — `search()` 返回 `(preset_id, score, index)` 三元组；新增 `ids.txt` 持久化；Ollama 嵌入容错（重试+退避）；batch_size 降至 2；空结果防御
+3. `serve.py` — `_preset_cache` 统一用 `p.id` 做 key；`send_error(code, msg)` 替代 200 错误响应；preview 用 `_sorted_presets[index]` 保证索引一致；warmup 加空预设检查；`HTTPServer` → `ThreadingHTTPServer` 解决请求排队阻塞
+4. `app.html` — `selectedPresetName`→`selectedPresetId` 全局重命名修复 apply 静默失败；预览网格流式加载重写（3 路 `loadOne` 链式递归）；空结果 `?.length` 防御
+5. 测试全通过 29/29
+
+**缺陷修复：**
+- apply 按钮点击后无响应：保留 `selectedPresetName` 引用导致函数提前 return
+- 预览网格只加载前 3 张：`loadNext` 递归逻辑中 return 截断了后续请求
+- 预览堵塞应用：单线程 `HTTPServer` 排队，改为 `ThreadingHTTPServer`
+- 错误响应无法识别：`send_json` 返回 200 含 error，前端 `resp.ok` 无法区分
+
+**Ollama 稳定性：** bge-m3 在连续嵌入约 120 个文本后返回 HTTP 500，原因未知（非内存不足）。已加入重试退避 + 短文本回退策略。
+
+**搜索结果评估（06/21）：**
+搜索「对比度低一点」返回：
+1. 人像绿调（高对比）0.564 ← ⚠️ 完全反向
+2. cold低饱和冷 0.556
+3. 淡雅cold709 0.544
+4. cine-lite低饱和电影感709 0.544
+5. cold低饱和冷709 0.539
+6. WARM暖调 0.xxx
+
+**评估：** bge-m3 的语义匹配以词共现为主。「对比度低一点」中的「对比」与「高对比」高度重合，导致方向相反的 LUT 排第一。这不是搜索管道 bug，而是**嵌入模型本身的局限性**——它不理解否定词（「低一点」）对修饰词（「对比度」）的语义反转。这不是当前代码能修复的，需引入二次排序（LLM 重排）或词形分析。
 
 
 ## Python 环境

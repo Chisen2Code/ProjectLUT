@@ -373,7 +373,7 @@
   const API_BASE = location.protocol === "file:" ? "http://localhost:8765" : "";
 
   let currentFile = null;
-  let selectedPresetName = null;
+  let selectedPresetId = null;
 
   const fileInput   = document.getElementById("fileInput");
   const dropZone    = document.getElementById("dropZone");
@@ -412,9 +412,8 @@
   });
   fileClear.addEventListener("click", () => {
     currentFile = null;
-    selectedPresetName = null;
+    selectedPresetId = null;
     window._lastSearchId = null;
-    window._lastClickedIndex = undefined;
     fileInfo.style.display = "none";
     origImg.src = "";
     origImg.style.display = "none";
@@ -465,7 +464,7 @@
       if (!resp.ok) throw new Error("服务器返回 " + resp.status);
       const data = await resp.json();
 
-      if (!data.results || data.results.length === 0) {
+      if (!data.results?.length) {
         resultsEl.innerHTML = "<li style='color:#999;cursor:default'>没有匹配结果</li>";
         document.getElementById("previewStrip").style.display = "none";
         statusEl.textContent = "";
@@ -482,7 +481,7 @@
 
         const name = document.createElement("span");
         name.className = "name";
-        name.textContent = item.preset_name;
+        name.textContent = item.preset_id;
         li.appendChild(name);
 
         const score = document.createElement("span");
@@ -491,8 +490,7 @@
         li.appendChild(score);
 
         li.onclick = () => {
-          selectedPresetName = item.preset_name;
-          window._lastClickedIndex = item.index;
+          selectedPresetId = item.preset_id;
           [...resultsEl.children].forEach(x => x.classList.remove("selected"));
           li.classList.add("selected");
           updateApplyBtn();
@@ -512,11 +510,10 @@
         const cell = document.createElement("div");
         cell.className = "cell";
         cell.dataset.index = item.index;
-        cell.dataset.name = item.preset_name;
+        cell.dataset.presetId = item.preset_id;
         cell.innerHTML = `<span class="placeholder">${idx+1}</span>`;
         cell.onclick = () => {
-          window._lastClickedIndex = item.index;
-          selectedPresetName = item.preset_name;
+          selectedPresetId = item.preset_id;
           document.querySelectorAll(".cell").forEach(c => c.classList.remove("selected"));
           cell.classList.add("selected");
           updateApplyBtn();
@@ -524,31 +521,35 @@
         grid.appendChild(cell);
       });
 
-      // Streaming load (max 3 concurrent)
-      const cells = grid.querySelectorAll(".cell");
+      // 流式加载：先发 3 个，完成一个补一个
+      const cells = Array.from(grid.querySelectorAll(".cell"));
       let loaded = 0;
-      const CONCURRENCY = 3;
 
-      function loadNext() {
-        if (loaded >= cells.length) return;
+      function loadOne() {
+        if (loaded >= cells.length) return Promise.resolve();
         const cell = cells[loaded];
         const idx = cell.dataset.index;
         loaded++;
-        fetch(API_BASE + `/api/preview/${idx}`)
+        return fetch(API_BASE + `/api/preview/${idx}`)
           .then(r => {
-            if (!r.ok) throw new Error(r.status);
+            if (!r.ok) throw new Error(String(r.status));
+            const ct = r.headers.get("content-type") || "";
+            if (ct.includes("json")) throw new Error("server error");
             return r.blob();
           })
           .then(blob => {
-            const url = URL.createObjectURL(blob);
-            cell.innerHTML = `<img src="${url}" alt="preview">`;
+            cell.innerHTML = `<img src="${URL.createObjectURL(blob)}" alt="">`;
           })
           .catch(() => {
             cell.innerHTML = `<span class="placeholder">✗</span>`;
-          });
+          })
+          .then(loadOne);
       }
 
-      for (let i = 0; i < CONCURRENCY; i++) loadNext();
+      // 启动 3 路并发
+      loadOne();
+      loadOne();
+      loadOne();
     } catch (err) {
       statusEl.textContent = "✗ 搜索失败: " + err.message;
       statusEl.classList.add("err");
@@ -557,16 +558,16 @@
 
   // ---------- 应用 LUT ----------
   function updateApplyBtn() {
-    applyBtn.disabled = !(currentFile && selectedPresetName);
+    applyBtn.disabled = !(currentFile && selectedPresetId);
     if (applyBtn.disabled) {
       applyBtn.textContent = "应用选中的 LUT 到图片";
     } else {
-      applyBtn.textContent = "应用 " + selectedPresetName + " 到图片";
+      applyBtn.textContent = "应用 " + selectedPresetId + " 到图片";
     }
   }
 
   async function doApply() {
-    if (!currentFile || !selectedPresetName) return;
+    if (!currentFile || !selectedPresetId) return;
     statusEl.textContent = "应用中...";
     statusEl.classList.remove("err");
     applyBtn.disabled = true;
@@ -574,11 +575,10 @@
     try {
       const t0 = performance.now();
       const fd = new FormData();
-      fd.append("preset_name", selectedPresetName);
+      fd.append("preset_id", selectedPresetId);
       fd.append("image", currentFile);
-      if (window._lastSearchId && window._lastClickedIndex !== undefined) {
+      if (window._lastSearchId && selectedPresetId) {
         fd.append("search_id", window._lastSearchId);
-        fd.append("preset_index", window._lastClickedIndex);
       }
 
       const resp = await fetch(API_BASE + "/api/apply", {

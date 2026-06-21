@@ -26,7 +26,7 @@ def cmd_search(args):
     # 确保索引存在
     build_index()
     results = search(args.query, top_n=args.n)
-    for text, score in results:
+    for text, score, _ in results:
         if args.short:
             # 仅输出预设名称（第一部分）
             name = text.split(" — ")[0]
@@ -75,7 +75,7 @@ def cmd_apply(args):
         print("未找到匹配的预设")
         return
 
-    text, score = results[args.n - 1]
+    text, score, _ = results[args.n - 1]
     name = text.split(" — ")[0]
 
     presets = load_presets()

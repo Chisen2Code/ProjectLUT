@@ -2,12 +2,18 @@
 LUT 处理器 — 读取图片，套 3D LUT，输出调色结果。
 纯 numpy + Pillow 实现，无需 colour-science。
 
+色彩管线：
+  sRGB 图片 → _srgb_to_linear() → _linear_to_log() [Cineon]
+  → _apply_lut3d_fast() → _log_to_linear() → _linear_to_srgb()
+  → _luma_attenuation() → 输出
+
 性能优化:
 - 进程内缓存 LUT 的 (r,g,b,channeltable_4d_rgb，避免重复 reshape/transpose
 - 图片最大边限制 1600，加速
 - 直接在 LUT 应用时统一 float32 + numpy 广播计算
 """
 import time
+from pathlib import Path
 import numpy as np
 from PIL import Image
 
@@ -32,10 +38,48 @@ def _get_cached_lut(preset: Preset) -> np.ndarray:
     return table_rgb
 
 
-def _log_to_709(img_rgb: np.ndarray) -> np.ndarray:
-    """log → 709 gamma approximation（直接用 float32 优化）"""
-    linear = np.power(np.clip(img_rgb, 0.0, 1.0, dtype=np.float32), 2.2)
-    return np.power(linear, 1 / 2.2, dtype=np.float32)
+def _srgb_to_linear(img: np.ndarray) -> np.ndarray:
+    """sRGB EOTF —— 去伽马 (IEC 61966-2-1 分段)"""
+    mask = img <= 0.04045
+    linear = np.where(mask, img / 12.92, ((img + 0.055) / 1.055) ** 2.4)
+    return linear.astype(np.float32)
+
+
+def _linear_to_srgb(img: np.ndarray) -> np.ndarray:
+    """sRGB OETF —— 加伽马 (IEC 61966-2-1 分段)"""
+    mask = img <= 0.0031308
+    srgb = np.where(mask, img * 12.92, 1.055 * (img ** (1 / 2.4)) - 0.055)
+    return np.clip(srgb, 0.0, 1.0).astype(np.float32)
+
+
+def _linear_to_log(img: np.ndarray) -> np.ndarray:
+    """Cineon-style log 编码 —— 线性光 → Log 域 [0,1]"""
+    clip = np.maximum(img, 1e-10)
+    log_val = np.log10(1 + clip * 1023) / np.log10(1024)
+    return np.clip(log_val, 0.0, 1.0).astype(np.float32)
+
+
+def _log_to_linear(img: np.ndarray) -> np.ndarray:
+    """Cineon-style log 解码 —— Log 域 [0,1] → 线性光"""
+    linear = (10 ** (img * np.log10(1024)) - 1) / 1023
+    return np.clip(linear, 0.0, 1.0).astype(np.float32)
+
+
+def _luma_attenuation(img: np.ndarray, threshold: float = 0.85) -> np.ndarray:
+    """高光区域橙黄通道饱和度衰减，抑制溢色
+
+    亮度 > threshold 的像素，按比例降低 R/G 通道：
+      - R 最多降 40%
+      - G 最多降 25%
+      - B 不动（保护冷色）
+    """
+    luma = 0.299 * img[..., 0] + 0.587 * img[..., 1] + 0.114 * img[..., 2]
+    excess = np.maximum(luma - threshold, 0.0) / (1.0 - threshold)
+    factor = np.clip(excess, 0.0, 1.0)  # (H, W)
+    result = img.copy()
+    result[..., 0] /= 1 + factor * 0.4  # R
+    result[..., 1] /= 1 + factor * 0.25  # G
+    return result
 
 
 def _apply_lut3d_fast(img_rgb: np.ndarray, table_4d_rgb: np.ndarray) -> np.ndarray:
@@ -90,21 +134,41 @@ def _resize_if_needed(img: Image.Image) -> Image.Image:
 def apply_lut(input_path: str, preset: Preset, output_path: str) -> str:
     """
     套 LUT 到图片。
+
+    根据 preset.lut_type 自动选择管线：
+      - "srgb"：直接查表 + 高光衰减
+      - "log_cinema"：完整 sRGB→Linear→Log→LUT→Linear→sRGB + 高光衰减
+
+    GIF 输入 + log_cinema LUT 抛 ValueError。
     """
+    # GIF 拦截
+    ext = Path(output_path).suffix.lower()
+    if preset.lut_type == "log_cinema" and ext == ".gif":
+        raise ValueError("影视 Log LUT 不适用于 GIF（8 位索引色天生调色失真）")
+
     table_rgb = _get_cached_lut(preset)
 
     img = Image.open(input_path).convert("RGB")
     img = _resize_if_needed(img)
     img_rgb = np.asarray(img, dtype=np.float32) / 255.0
 
-    if preset.color_space == "log":
-        img_rgb = _log_to_709(img_rgb)
+    _t0 = time.perf_counter()
+    if preset.lut_type == "log_cinema":
+        # 完整管线：sRGB → Linear → Log → 3D LUT → Linear → sRGB
+        linear = _srgb_to_linear(img_rgb)
+        log_enc = _linear_to_log(linear)
+        result = _apply_lut3d_fast(log_enc, table_rgb)
+        linear_out = _log_to_linear(result)
+        result = _linear_to_srgb(linear_out)
+    else:
+        # sRGB-native：直接查表
+        result = _apply_lut3d_fast(img_rgb, table_rgb)
 
-    t0 = time.perf_counter()
-    result = _apply_lut3d_fast(img_rgb, table_rgb)
+    # 高光衰减（两类 LUT 都加，防止偏橙）
+    result = _luma_attenuation(result)
     result = np.clip(result, 0.0, 1.0)
-    elapsed_ms = int((time.perf_counter() - t0) * 1000)
 
+    elapsed_ms = int((time.perf_counter() - _t0) * 1000)
     result_img = Image.fromarray((result * 255).astype(np.uint8))
     result_img.save(output_path)
     print(f"  LUT 应用: {elapsed_ms}ms, 尺寸={img.size}")

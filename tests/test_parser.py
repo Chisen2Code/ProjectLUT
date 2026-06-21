@@ -27,13 +27,15 @@ def test_infer_category():
 
 
 def test_read_cube_rgb_shape():
-    """read_cube_rgb 返回 (35937, 3)"""
+    """read_cube_rgb 返回 (35937, 3) 及 domain 信息"""
     cube_path = Path("LUT预设1/LUT全系打包/2024-VINTAGE系列lut/log灰片格式使用/gentle复古暖.cube")
     if cube_path.exists():
-        data, size = read_cube_rgb(cube_path)
+        data, size, domain_min, domain_max = read_cube_rgb(cube_path)
         assert size == 33
         assert data.shape == (35937, 3)
-        assert data.dtype == np.float64
+        assert data.dtype == np.float32
+        assert domain_min is None  # 当前 LUT 库无 DOMAIN header
+        assert domain_max is None
 
 
 def test_preset_dataclass():
@@ -45,3 +47,8 @@ def test_preset_dataclass():
     assert p.lut_data is not None
     assert p.lut_size == 33
     assert p.color_space in ("log", "709", None)
+    assert p.lut_type in ("srgb", "log_cinema")
+    assert p.domain_min is None  # 当前库无 DOMAIN header
+    assert p.domain_max is None
+    assert isinstance(p.id, str) and len(p.id) > 0
+    assert p.id == p.name  # id == name == 文件名去后缀

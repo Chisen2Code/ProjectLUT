@@ -23,9 +23,10 @@ import numpy as np
 class Preset:
     """单个 LUT 预设的结构化描述"""
 
-    name: str  # 干净名称
+    name: str  # 干净名称（同时也是唯一标识 id）
     filename: str  # 原始文件名（含 .cube）
     path: Path  # 绝对路径
+    id: str = ""  # 唯一标识，默认用 name
     color_space: Optional[str] = None  # "log" | "709" | None(未知)
     collection: Optional[str] = None  # 所属合集
     category: Optional[str] = None  # 风格类别
@@ -33,6 +34,12 @@ class Preset:
     original_author: str = "林馆长"  # 原作者
     lut_data: Optional[np.ndarray] = None  # (35937, 3) RGB float
     lut_size: int = 0                       # 33
+    lut_type: Optional[str] = None          # "srgb" | "log_cinema" | None
+    domain_min: Optional[tuple[float, float, float]] = None
+    domain_max: Optional[tuple[float, float, float]] = None
+    contrast: Optional[str] = None     # "low" | "mid" | "high"
+    saturation: Optional[str] = None   # "low" | "mid" | "high"
+    tone: Optional[str] = None         # "warm" | "cold" | "neutral"
 
     def to_search_text(self) -> str:
         """生成用于向量嵌入的搜索文本"""
@@ -82,29 +89,72 @@ def infer_category(dirname: str) -> Optional[str]:
     return None
 
 
+def infer_contrast(name: str, category: Optional[str]) -> str:
+    """从预设名称和类别推断对比度"""
+    text = (name + " " + (category or "")).lower()
+    if any(k in text for k in ["低对比", "淡", "柔", "matte", "fade", "paste", "低饱和"]):
+        return "low"
+    if any(k in text for k in ["高对比", "强对比", "crush", "硬"]):
+        return "high"
+    return "mid"
+
+
+def infer_saturation(name: str, category: Optional[str]) -> str:
+    """从预设名称和类别推断饱和度"""
+    text = (name + " " + (category or "")).lower()
+    if any(k in text for k in ["低饱和", "淡雅", "fade", "matte", "clean"]):
+        return "low"
+    if any(k in text for k in ["高饱和", "鲜艳"]):
+        return "high"
+    return "mid"
+
+
+def infer_tone(name: str, category: Optional[str]) -> str:
+    """从预设名称和类别推断色温"""
+    text = (name + " " + (category or "")).lower()
+    if any(k in text for k in ["暖", "温暖", "warm"]):
+        return "warm"
+    if any(k in text for k in ["冷", "冷白", "cool"]):
+        return "cold"
+    if any(k in text for k in ["中性", "自然", "标准", "standard"]):
+        return "neutral"
+    return "neutral"
+
+
 def read_cube_rgb(path: Path) -> tuple:
     """读取 .cube 文件的 3D LUT 数据（纯 numpy 实现，无需 colour-science）
 
-    .cube 规范：
-      - LUT_3D_SIZE N 声明网格数（通常 33）
-      - 每行 3 个 float: r g b
-      - 数据顺序：R 变化最快 → G 次之 → B 最慢
-      - 可选 TITLE / DOMAIN_MIN / DOMAIN_MAX 声明
+    返回 (data, size, domain_min, domain_max)
+    data: (N,3) float32 or None
+    size: int (33 等)
+    domain_min/domain_max: tuple(float,float,float) or None
     """
     try:
         size = 0
         rows = []
+        domain_min = domain_max = None
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
             for line in f:
                 line = line.strip()
                 if not line or line.startswith("#"):
                     continue
-                if line.upper().startswith("TITLE"):
+                ul = line.upper()
+                if ul.startswith("TITLE"):
                     continue
-                if line.upper().startswith("LUT_3D_SIZE"):
+                if ul.startswith("LUT_3D_SIZE"):
                     size = int(line.split()[1])
                     continue
-                if line.upper().startswith("DOMAIN"):
+                if ul.startswith("DOMAIN_MIN"):
+                    parts = line.split()
+                    if len(parts) >= 4:
+                        domain_min = (float(parts[1]), float(parts[2]), float(parts[3]))
+                    continue
+                if ul.startswith("DOMAIN_MAX"):
+                    parts = line.split()
+                    if len(parts) >= 4:
+                        domain_max = (float(parts[1]), float(parts[2]), float(parts[3]))
+                    continue
+                if ul.startswith("DOMAIN"):
                     continue
                 # 数据行：3 个浮点数
                 parts = line.split()
@@ -114,11 +164,11 @@ def read_cube_rgb(path: Path) -> tuple:
                     except ValueError:
                         continue
         if size == 0 or len(rows) < size ** 3:
-            return None, 0
+            return None, 0, None, None
         data = np.array(rows[: size ** 3], dtype=np.float32)
-        return data, size
+        return data, size, domain_min, domain_max
     except Exception:
-        return None, 0
+        return None, 0, None, None
 
 
 def parse_presets(root_dir: str | Path) -> List[Preset]:
@@ -139,7 +189,7 @@ def parse_presets(root_dir: str | Path) -> List[Preset]:
     for cube_file in sorted(root.rglob("*.cube")):
         filename = cube_file.name
         name = Path(filename).stem  # 文件名去 .cube 即为预设名称
-        lut_data, lut_size = read_cube_rgb(cube_file)
+        lut_data, lut_size, domain_min, domain_max = read_cube_rgb(cube_file)
 
         # 解析路径层级
         parts = cube_file.relative_to(root).parts
@@ -165,7 +215,20 @@ def parse_presets(root_dir: str | Path) -> List[Preset]:
         # 目录名（去数字前缀）作为 fallback category
         dir_names = [re.sub(r"^\d+\.\s*", "", p) for p in parts[:-1]]
 
+        # lut_type 推导：color_space → 两类 LUT
+        if color_space == "log":
+            lut_type = "log_cinema"
+        else:
+            lut_type = "srgb"  # "709" 或 None 都保守视为 sRGB 可用
+
+        # 规则层 metadata
+        cat_for_infer = category or (dir_names[-1] if dir_names else None)
+        contrast = infer_contrast(name, cat_for_infer)
+        saturation = infer_saturation(name, cat_for_infer)
+        tone = infer_tone(name, cat_for_infer)
+
         presets.append(Preset(
+            id=name,
             name=name,
             filename=filename,
             path=cube_file,
@@ -175,6 +238,12 @@ def parse_presets(root_dir: str | Path) -> List[Preset]:
             sub_category=sub_category,
             lut_data=lut_data,
             lut_size=lut_size,
+            lut_type=lut_type,
+            domain_min=domain_min,
+            domain_max=domain_max,
+            contrast=contrast,
+            saturation=saturation,
+            tone=tone,
         ))
 
     return sorted(presets, key=lambda p: p.name)

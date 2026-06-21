@@ -5,18 +5,19 @@ from lut.direct_embed import build_index, search, get_stats, get_history, log_se
 
 
 def test_build_index_creates_files():
-    """build_index 生成 vectors.npy 和 texts.txt"""
+    """build_index 生成索引文件（含 ids.txt）"""
     build_index()
     assert (Path(".lut_vectors") / "vectors.npy").exists()
     assert (Path(".lut_vectors") / "texts.txt").exists()
+    assert (Path(".lut_vectors") / "ids.txt").exists()
 
 
 def test_search_returns_top5():
-    """search 返回 5 个结果，含分数"""
-    results = search("冷色调胶片感")
+    """search 返回 N 个结果，含 preset_id + 分数 + index"""
+    results = search("冷色调胶片感", top_n=5)
     assert len(results) == 5
-    for text, score, idx in results:
-        assert isinstance(text, str) and len(text) > 0
+    for pid, score, idx in results:
+        assert isinstance(pid, str) and len(pid) > 0
         assert 0.0 <= score <= 1.0
         assert isinstance(idx, int)
         assert 0 <= idx <= 151
@@ -25,15 +26,15 @@ def test_search_returns_top5():
 def test_search_finds_fuji():
     """搜索'富士'应返回含富士的 LUT"""
     results = search("富士胶片风格")
-    texts = [r[0] for r in results]
-    assert any("富士" in t for t in texts), f"未找到富士: {texts}"
+    pids = [r[0] for r in results]
+    assert any("富士" in pid for pid in pids), f"未找到富士: {pids}"
 
 
 def test_search_returns_index():
     """search 返回结果含 index 字段"""
     results = search("冷淡", top_n=10)
     assert len(results) > 0
-    for name, score, idx in results:
+    for pid, score, idx in results:
         assert isinstance(idx, int)
         assert 0 <= idx <= 151
 
@@ -130,21 +131,22 @@ def test_log_search_json_creates_file():
     assert data["query_vector"] == [0.1, 0.2, 0.3]
     assert data["top_count"] == 2
     assert data["top_results"][0]["index"] == 23
-    assert data["clicked_index"] is None
+    assert data["top_results"][0]["preset_id"] == "p1"
+    assert data["clicked_preset_id"] is None
 
 
 def test_log_click_updates_file():
-    """log_click 补写 clicked_index"""
+    """log_click 补写 clicked_preset_id"""
     sid = log_search_json("test", [0.5], [("p", 0.9, 42)], 1)
-    log_click(sid, 42)
+    log_click(sid, "p-42")
     with open(LOG_DIR / f"{sid}.json", encoding="utf-8") as f:
         data = json.load(f)
-    assert data["clicked_index"] == 42
+    assert data["clicked_preset_id"] == "p-42"
 
 
 def test_log_click_unknown_id():
     """不存在的 search_id 不崩溃"""
-    result = log_click("nonexistent_000", 0)
+    result = log_click("nonexistent_000", "unknown")
     assert result is False
 
 
