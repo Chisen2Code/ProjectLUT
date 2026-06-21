@@ -12,7 +12,9 @@ def rule_filter(results: list, query: str, preset_cache: dict) -> list:
     """
     intent = {
         "low_contrast": any(w in query for w in ["低对比", "对比度低", "柔", "淡"]),
+        "high_contrast": any(w in query for w in ["高对比", "对比度高", "清晰"]),
         "low_saturation": any(w in query for w in ["低饱和", "饱和度低", "淡雅"]),
+        "high_saturation": any(w in query for w in ["高饱和", "饱和度高", "鲜艳", "饱和度高一"]),
         "warm": any(w in query for w in ["暖", "温暖"]),
         "cold": any(w in query for w in ["冷", "冷白"]),
     }
@@ -26,15 +28,23 @@ def rule_filter(results: list, query: str, preset_cache: dict) -> list:
             idx = 0
         p = preset_cache.get(pid)
         if not p:
-            filtered.append((pid, score, idx) if len(item) == 3 else (pid, score))
+            filtered.append(item)
             continue
-        if intent["low_contrast"] and getattr(p, "contrast", None) == "high":
+        cs = getattr(p, "contrast", None)
+        sat = getattr(p, "saturation", None)
+        tn = getattr(p, "tone", None)
+        # 方向排除：用户要低→排除高；用户要高→排除低
+        if intent["low_contrast"] and cs == "high":
             continue
-        if intent["low_saturation"] and getattr(p, "saturation", None) == "high":
+        if intent["high_contrast"] and cs == "low":
             continue
-        if intent["warm"] and getattr(p, "tone", None) == "cold":
+        if intent["low_saturation"] and sat == "high":
             continue
-        if intent["cold"] and getattr(p, "tone", None) == "warm":
+        if intent["high_saturation"] and sat == "low":
+            continue
+        if intent["warm"] and tn == "cold":
+            continue
+        if intent["cold"] and tn == "warm":
             continue
         filtered.append(item)
 

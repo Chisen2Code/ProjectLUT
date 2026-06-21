@@ -2,6 +2,10 @@
 
 调色 LUT 语义检索与 RAG 知识库。**Demo：一句话 → 匹配 LUT → 套到图片。**
 
+## 文件管理底线
+
+**本项目所有文件必须位于 `ProjectLUT/` 目录内**，不得散落到 `d:\WorkSpace` 根目录。包括但不限于：截图、日志、临时脚本、测试产出。违者立即移动或删除。
+
 ## 快速开始
 
 ```bash
@@ -15,12 +19,13 @@ python serve.py                    # GUI 服务端 → 浏览器 app.html
 ## 项目目录
 
 ```
-src/lut/       parser | direct_embed | processor | cli
-tests/         18 tests (parser 6 + embed 5 + processor 7)
-docs/          architecture | color-pipeline | reference/ (论文/调研) | superpowers/
-scripts/       运维脚本 (14 个 _*.py + _start.ps1 + test_upload.html)
-serve.py       GUI API 服务 (端口 8765)
+src/lut/       parser | direct_embed | processor | cli | rerank
+tests/         45 tests (parser 6 + embed 5 + processor 7 + rerank 16)
+docs/          architecture | color-pipeline | reference/ | superpowers/
+scripts/       运维脚本 (16 个)
+serve.py       GUI API 服务 (端口 8765, ThreadingHTTPServer)
 app.html       浏览器 GUI
+data/search_log/  JSON 搜索日志 + query_vector 持久化
 pyproject.toml hatchling + lut 入口
 LUT预设1/      152 个 .cube LUT 文件
 ```
@@ -46,23 +51,63 @@ LightRAG 保留给论文 RAG 阶段，Demo 不用。
 
 | 层 | |
 |----|----|
-| 语义检索 | ✅ bge-m3 + numpy，<1s |
-| 图片调色 | ✅ colour-science 3D LUT + log→709 |
+| 语义检索 | ✅ bge-m3 + numpy 余弦相似度，~5s（含嵌入） |
+| 动态截断 | ✅ 0.3 底线 + 0.15 陡降 + 6 上限 |
+| 规则纠偏 | ✅ contrast/saturation/tone 字段过滤，6 意图方向 |
+| 图片调色 | ✅ sRGB/Log 双管线 + Cineon 编码 + 高光衰减 |
+| 搜索日志 | ✅ JSON 持久化 + query_vector + 点击回传 |
+| 预览网格 | ✅ 流式加载（3 并发），60px 缩略图 |
 | CLI | ✅ 6 条命令 (search/apply/index/list/stats/history) |
 | GUI | ✅ serve.py + app.html |
-| 测试 | ✅ 15/15 |
-| Git | ✅ 10+ commits，待 push |
+| 测试 | ✅ 45/45（parser 6 + embed 5 + processor 7 + rerank 16 + 新功能） |
+
+## 架构概览
+
+```
+用户输入 ─→ embed_query(bge-m3) ─→ 余弦 vs vectors.npy(152)
+                                       │
+                                  dynamic_cut(6)
+                                       │
+                                  rule_filter(6意图)
+                                       │
+                                  log_search_json + 返回前端
+                                       │
+                                  用户选 preset + 上传图片
+                                       │
+                                  apply_lut
+                                    ├── srgb → 直接查表 + 高光衰减
+                                    └── log_cinema → sRGB→Linear→Log→LUT→Linear→sRGB + 高光衰减
+```
+
+## 已知短板
+
+| 方面 | 问题 | 状态 |
+|------|------|------|
+| Log 曲线精度 | Cineon 通用近似，特定摄影机 Log（Arri/S-Log/C-Log）不匹配 | ⬜ 待 Preset.log_curve |
+| 黑白 LUT | 库中无真正黑白/去色预设 | ⬜ 待入库或内置去色 |
+| search_log 分析 | 数据已采集，未做用户画像和近义词聚合 | ⬜ 待分析层 |
+| 视频适配 | OpenCV 逐帧套 LUT 思路已明确 | ⬜ 待实现 |
+| 代理干扰 | Windows HTTPS_PROXY 导致 bash/curl 断联，仅 Playwright 可用 | ⬜ 环境问题 |
+| bge-m3 批量嵌入 | 连续 120+ 文本后 HTTP 500，已加退避但未根治 | ⬜ 待排查 |
 
 ## MVP 路线图
 
-| 阶段 | 状态 | 依赖 |
+| 阶段 | 子项 | 状态 |
 |------|------|------|
-| 0. 语义检索 | ✅ | bge-m3 + numpy |
-| 1. 图片调色 | ✅ | colour-science |
-| 2. 视频适配 | ⬜ | OpenCV + GPU 纹理 |
-| 3. Blender MCP | ⬜ | Blender Python API |
-| 4. 论文 RAG | ⬜ | LightRAG + MinerU |
-| 5. AceTone tokenizer | ⬜ | 待调研 |
+| **0. 语义检索** | bge-m3 + numpy 余弦相似度 | ✅ |
+| | dynamic_cut 复合截断 | ✅ |
+| | rule_filter 规则纠偏 | ✅ |
+| **1. 图片调色** | sRGB 直查管线 | ✅ |
+| | Log 管线（Cineon） | ✅ 有精度短板 |
+| | 高光衰减 + GIF 拦截 | ✅ |
+| **2. 搜索分析** | JSON 日志 + query_vector | ✅ |
+| | 点击回传 clicked_preset_id | ✅ |
+| | 用户画像 / 近义词聚合 | ⬜ |
+| **3. 预览体验** | ⚡ 状态条 + 动态结果列表 | ✅ |
+| | 百图预览网格（流式加载） | ✅ |
+| **4. 视频适配** | 规划阶段 | ⬜ |
+| **5. 论文 RAG** | LightRAG + MinerU | ⬜ |
+| **6. Blender MCP** | Blender Python API | ⬜ |
 
 ## 进度日志
 
@@ -179,16 +224,26 @@ LightRAG 保留给论文 RAG 阶段，Demo 不用。
 
 **Ollama 稳定性：** bge-m3 在连续嵌入约 120 个文本后返回 HTTP 500，原因未知（非内存不足）。已加入重试退避 + 短文本回退策略。
 
-**搜索结果评估（06/21）：**
-搜索「对比度低一点」返回：
-1. 人像绿调（高对比）0.564 ← ⚠️ 完全反向
-2. cold低饱和冷 0.556
-3. 淡雅cold709 0.544
-4. cine-lite低饱和电影感709 0.544
-5. cold低饱和冷709 0.539
-6. WARM暖调 0.xxx
+**搜索结果评估（已修复 06/21）：**
+规则层 `rule_filter` 上线后，否定/程度修饰意图可在 bge-m3 召回后做字段级排除：
+- 「对比度低一点」→ 排除 `contrast=high` → 不再返回高对比 LUT ✅
+- 「饱和度高一些」→ 排除 `saturation=low` → 不再返回低饱和 LUT ✅
+- 关键词驱动，零 LLM 调用，毫秒级
+- 目前支持：low_contrast / high_contrast / low_saturation / high_saturation / warm / cold
 
-**评估：** bge-m3 的语义匹配以词共现为主。「对比度低一点」中的「对比」与「高对比」高度重合，导致方向相反的 LUT 排第一。这不是搜索管道 bug，而是**嵌入模型本身的局限性**——它不理解否定词（「低一点」）对修饰词（「对比度」）的语义反转。这不是当前代码能修复的，需引入二次排序（LLM 重排）或词形分析。
+### Session #10 (2026-06-21): 规则层语义纠偏 + 完整测试覆盖
+
+**事件：** bge-m3 不理解否定修饰（「对比度低一点」匹配到「高对比」），引入纯规则过滤层，零 LLM 调用。
+
+**改动：**
+1. `parser.py` — Preset 新增 `contrast`/`saturation`/`tone` 三个 metadata 字段 + `infer_contrast()`/`infer_saturation()`/`infer_tone()` 关键词引导函数
+2. `rerank.py` — 独立模块 `rule_filter(results, query, preset_cache)`，检测 6 个意图方向并排除不匹配预设
+3. `serve.py` — search 管道中 dynamic_cut 后插入 rule_filter
+4. `tests/test_rerank.py` — 16 个测试覆盖关键词推断 + 规则过滤 + 边界条件
+
+**验证：** 44/44 tests ✅，「对比度低一点」不再返回高对比 LUT，「饱和度高一些」不再返回低饱和 LUT。
+
+**遗留：** Log 管线使用 Cineon 通用曲线，特定摄影机 Log 空间不匹配导致部分 LUT 输出偏灰偏雾。需引入 `log_curve` 可配置字段方能根治，当前无业务人员标注，搁置。
 
 
 ## Python 环境

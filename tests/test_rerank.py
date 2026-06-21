@@ -99,3 +99,11 @@ def test_rule_filter_exclude_warm():
     out = rule_filter([("p1", 0.5), ("p2", 0.4)], "冷色调", fake)
     assert len(out) == 1
     assert out[0][0] == "p2"
+
+
+def test_rule_filter_high_saturation():
+    """饱和度高一些排除低饱和预设"""
+    fake = {"p1": _mock_preset(saturation="low"), "p2": _mock_preset(saturation="high")}
+    out = rule_filter([("p1", 0.6), ("p2", 0.5)], "饱和度高一些", fake)
+    assert len(out) == 1
+    assert out[0][0] == "p2"
