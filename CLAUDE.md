@@ -262,8 +262,32 @@ LightRAG 保留给论文 RAG 阶段，Demo 不用。
 1. `app.html` 左下角新增统计面板：总搜索数、平均耗时、top-6 热门 query
 2. 数据来自 `/api/stats`（基于 JSON 日志聚合）
 
+### Session #12 (2026-06-21~23): 规则强化 + 项目整理 + 前端同步
 
-## Python 环境
+**规则层强化：**
+1. `rerank.py` — 新增 `high_contrast`/`high_saturation` 意图检测，搜索「饱和度高一些」「对比度高」时排除低值预设
+2. `dynamic_cut` — `max_count` 从 10 降至 6
+
+**项目整理：**
+1. SQLite 彻底移除（`_init_db`/`log_search`/`import sqlite3`），`get_stats` 改为 JSON 聚合
+2. `scripts/` 分 `active/` + `archive/` 两级
+3. 存档遗留模块 `embedder.py`/`matcher.py` 及过时 LightRAG 文档
+4. 删除已执行完毕的旧 plans/specs（6 个 06-16 文件）
+5. `docs/architecture.md` 重写
+6. README 重写
+7. `docs/code-reading-guide.md` 新增
+8. 注释自查修正 6 个模块
+
+**前端修复：**
+1. 统计面板（总搜索/平均耗时/top-6 热门 query）
+2. 搜索结果列表和预览网格选中同步
+3. 预览请求链加入 `_searchGen` 断路，防止旧搜索残留图片
+
+**基础设施：**
+1. LUT预设 152 个 .cube 文件推送至 GitHub（134MB）
+2. .gitignore 移除 LUT预设1 排除
+
+**线上：** `main` 分支，12 commits 推送，45 tests ✅
 
 ```bash
 source d:/WorkSpace/ProjectLUT/.venv/Scripts/activate
