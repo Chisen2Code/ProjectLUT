@@ -554,12 +554,7 @@
         score.textContent = item.score.toFixed(3);
         li.appendChild(score);
 
-        li.onclick = () => {
-          selectedPresetId = item.preset_id;
-          [...resultsEl.children].forEach(x => x.classList.remove("selected"));
-          li.classList.add("selected");
-          updateApplyBtn();
-        };
+        li.onclick = () => selectPreset(item.preset_id);
         resultsEl.appendChild(li);
       });
       window._lastSearchId = data.search_id;
@@ -577,12 +572,7 @@
         cell.dataset.index = item.index;
         cell.dataset.presetId = item.preset_id;
         cell.innerHTML = `<span class="placeholder">${idx+1}</span>`;
-        cell.onclick = () => {
-          selectedPresetId = item.preset_id;
-          document.querySelectorAll(".cell").forEach(c => c.classList.remove("selected"));
-          cell.classList.add("selected");
-          updateApplyBtn();
-        };
+        cell.onclick = () => selectPreset(item.preset_id);
         grid.appendChild(cell);
       });
 
@@ -622,6 +612,21 @@
   }
 
   // ---------- 应用 LUT ----------
+  // ---------- 选中同步 ----------
+  function selectPreset(presetId) {
+    selectedPresetId = presetId;
+    // 同步高亮结果列表
+    [...resultsEl.children].forEach(li => {
+      const nameEl = li.querySelector(".name");
+      li.classList.toggle("selected", nameEl && nameEl.textContent === presetId);
+    });
+    // 同步高亮预览网格
+    document.querySelectorAll(".cell").forEach(cell => {
+      cell.classList.toggle("selected", cell.dataset.presetId === presetId);
+    });
+    updateApplyBtn();
+  }
+
   function updateApplyBtn() {
     applyBtn.disabled = !(currentFile && selectedPresetId);
     if (applyBtn.disabled) {
