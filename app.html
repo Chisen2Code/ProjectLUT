@@ -417,6 +417,7 @@
 
   let currentFile = null;
   let selectedPresetId = null;
+  let _searchGen = 0;  // 递增，用于切断旧预览请求链
 
   const fileInput   = document.getElementById("fileInput");
   const dropZone    = document.getElementById("dropZone");
@@ -576,26 +577,31 @@
         grid.appendChild(cell);
       });
 
-      // 流式加载：先发 3 个，完成一个补一个
+      // 递增搜索代，切断旧预览链
+      const gen = ++_searchGen;
       const cells = Array.from(grid.querySelectorAll(".cell"));
       let loaded = 0;
 
       function loadOne() {
+        if (gen !== _searchGen) return;  // 已有新搜索，放弃
         if (loaded >= cells.length) return Promise.resolve();
         const cell = cells[loaded];
         const idx = cell.dataset.index;
         loaded++;
         return fetch(API_BASE + `/api/preview/${idx}`)
           .then(r => {
+            if (gen !== _searchGen) return;  // 再次检查
             if (!r.ok) throw new Error(String(r.status));
             const ct = r.headers.get("content-type") || "";
             if (ct.includes("json")) throw new Error("server error");
             return r.blob();
           })
           .then(blob => {
+            if (gen !== _searchGen) return;
             cell.innerHTML = `<img src="${URL.createObjectURL(blob)}" alt="">`;
           })
           .catch(() => {
+            if (gen !== _searchGen) return;
             cell.innerHTML = `<span class="placeholder">✗</span>`;
           })
           .then(loadOne);
