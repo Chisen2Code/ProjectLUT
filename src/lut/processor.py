@@ -8,7 +8,7 @@ LUT 处理器 — 读取图片，套 3D LUT，输出调色结果。
   → _luma_attenuation() → 输出
 
 性能优化:
-- 进程内缓存 LUT 的 (r,g,b,channeltable_4d_rgb，避免重复 reshape/transpose
+- 进程内缓存 LUT 的 table_4d_rgb，避免重复 reshape/transpose
 - 图片最大边限制 1600，加速
 - 直接在 LUT 应用时统一 float32 + numpy 广播计算
 """

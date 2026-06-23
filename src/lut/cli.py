@@ -4,7 +4,10 @@ CLI 入口 — lut 命令
 用法:
     lut index               构建向量索引
     lut search <query>      语义检索 LUT 预设
+    lut apply <query> <图片> 套 LUT 到图片
     lut list                列出全部预设名称
+    lut stats               搜索统计
+    lut history             最近搜索记录
 """
 
 import argparse

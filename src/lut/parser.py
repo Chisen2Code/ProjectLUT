@@ -56,7 +56,6 @@ class Preset:
 # ── 解析逻辑 ──────────────────────────────────────────────
 
 
-
 def infer_color_space(dirname: str) -> Optional[str]:
     """从目录名推断色彩空间"""
     d = dirname.lower()
@@ -258,7 +257,7 @@ def load_presets(root_dir: str | Path = "LUT预设1") -> List[Preset]:
 
 
 def presets_to_texts(presets: List[Preset]) -> List[str]:
-    """将预设列表转为 LightRAG 可索引的文本列表"""
+    """将预设列表转为向量嵌入用的文本列表"""
     return [p.to_search_text() for p in presets]
 
 

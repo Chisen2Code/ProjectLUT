@@ -3,9 +3,11 @@
 API:
   GET  /                  → app.html
   GET  /api/ping          → 健康检查
-  GET  /api/stats         → 统计
-  POST /api/search        → {"query":"...","top_n":5} → Top-N 匹配
-  POST /api/apply         → multipart: preset_name + image → 返回 JPEG
+  GET  /api/stats         → 搜索统计（JSON 聚合）
+  POST /api/search        → {"query":"..."} → {results, count, ms, search_id}
+  POST /api/apply         → multipart: preset_id + image → image/jpeg
+  POST /api/click         → {"search_id":"...","preset_id":"..."} → {"ok":bool}
+  GET  /api/preview/{idx} → image/jpeg（200px 缩略图）
 """
 import sys
 from pathlib import Path
