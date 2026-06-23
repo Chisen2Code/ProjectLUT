@@ -1,182 +1,161 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<mxfile host="Electron" modified="2026-06-23T15:30:00.000Z" agent="5.0 (Windows NT 10.0; Win64; x64)" etag="search-lifecycle" version="24.2.5">
-  <diagram id="FzyiEjh8" name="第 1 页">
-    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1200" pageHeight="900">
+<mxfile host="Electron">
+  <diagram id="search-lifecycle" name="搜索生命周期">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1200" pageHeight="900" background="#f8f9fa">
       <root>
         <mxCell id="0"/>
         <mxCell id="1" parent="0"/>
 
         <!-- 标题 -->
-        <mxCell id="title" value="搜索请求生命周期 — 全链路追踪" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=20;fontStyle=1;fontColor=#1a1a2e;" vertex="1" parent="1">
-          <mxGeometry x="300" y="20" width="600" height="40" as="geometry"/>
+        <mxCell id="t0" value="搜索请求生命周期" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=22;fontFamily=Helvetica;fontColor=#1a1a2e;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="400" height="30" as="geometry"/>
         </mxCell>
-        <mxCell id="subtitle" value="从用户输入「平淡一点」到返回 Top-3 LUT 预设的完整路径" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=12;fontColor=#888;" vertex="1" parent="1">
-          <mxGeometry x="320" y="55" width="560" height="20" as="geometry"/>
-        </mxCell>
-
-        <!-- ========== 阶段 1：请求入口 ========== -->
-        <mxCell id="ph1_box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8eaf6;strokeColor=#3f51b5;strokeWidth=2;dashed=1;" vertex="1" parent="1">
-          <mxGeometry x="30" y="100" width="250" height="180" as="geometry"/>
-        </mxCell>
-        <mxCell id="ph1_label" value="阶段 1：请求入口" style="text;html=1;strokeColor=none;fillColor=#3f51b5;align=center;fontSize=11;fontColor=#3f51b5;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="55" y="108" width="200" height="20" as="geometry"/>
+        <mxCell id="t0s" value="用户输入「平淡一点」到返回 Top-3 的完整路径" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=12;fontFamily=Helvetica;fontColor=#888;" vertex="1" parent="1">
+          <mxGeometry x="42" y="48" width="400" height="18" as="geometry"/>
         </mxCell>
 
-        <mxCell id="browser" value="🌐 浏览器&#10;app.html" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c5cae9;strokeColor=#3f51b5;shadow=1;" vertex="1" parent="1">
-          <mxGeometry x="55" y="135" width="100" height="50" as="geometry"/>
+        <!-- ========== 阶段 1：请求 ========== -->
+        <mxCell id="ph1" value="阶段 1：请求入口" style="swimlane;html=1;startSize=22;horizontal=1;fillColor=#e8eaf6;strokeColor=#5c6bc0;swimlaneFillColor=#e8eaf6;fontSize=11;fontFamily=Helvetica;fontColor=#283593;" vertex="1" parent="1">
+          <mxGeometry x="40" y="80" width="1120" height="90" as="geometry"/>
         </mxCell>
-        <mxCell id="arrow1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;strokeColor=#3f51b5;strokeWidth=2;" edge="1" parent="1" source="browser" target="api_search">
+
+        <mxCell id="browser" value="&lt;b&gt;🌐 浏览器&lt;/b&gt;&lt;br&gt;app.html" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c5cae9;strokeColor=#3f51b5;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="70" y="110" width="110" height="46" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="sv" value="&lt;b&gt;📡 serve.py&lt;/b&gt;&lt;br&gt;do_POST /api/search" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#9fa8da;strokeColor=#3f51b5;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="340" y="110" width="130" height="46" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="c1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;strokeColor=#3f51b5;strokeWidth=2;fontSize=11;fontFamily=Helvetica;" edge="1" parent="1" source="browser" target="sv">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="260" y="133" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c1l" value="POST /api/search&#10;{ query: &quot;平淡一点&quot; }" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=10;fontFamily=Menlo;fontColor=#3f51b5;" vertex="1" parent="1">
+          <mxGeometry x="190" y="120" width="140" height="28" as="geometry"/>
+        </mxCell>
+
+        <!-- ========== 阶段 2：检索 ========== -->
+        <mxCell id="ph2" value="阶段 2：向量检索（≈ 4500ms）" style="swimlane;html=1;startSize=22;horizontal=1;fillColor=#fce4ec;strokeColor=#e91e63;swimlaneFillColor=#fce4ec;fontSize=11;fontFamily=Helvetica;fontColor=#880e4f;" vertex="1" parent="1">
+          <mxGeometry x="40" y="190" width="1120" height="140" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="embed" value="&lt;b&gt;🔮 bge-m3 嵌入&lt;/b&gt;&lt;br&gt;embed_query(&quot;平淡一点&quot;)&lt;br&gt;&lt;span style=&quot;font-size:10px;color:#666;&quot;&gt;→ 1024 维向量&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8bbd0;strokeColor=#c2185b;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="70" y="220" width="170" height="54" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="cosine" value="&lt;b&gt;📐 余弦相似度&lt;/b&gt;&lt;br&gt;np.dot(v_norm, q_norm)&lt;br&gt;&lt;span style=&quot;font-size:10px;color:#666;&quot;&gt;→ 152 个 (0~1) 分数&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f48fb1;strokeColor=#c2185b;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="300" y="220" width="170" height="54" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="vec" value="&lt;b&gt;💾 vectors.npy&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size:10px;&quot;&gt;(152, 1024) float32&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:10px;color:#666;&quot;&gt;L2 归一化&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1bee7;strokeColor=#7b1fa2;dashed=1;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="540" y="220" width="130" height="54" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="c2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;strokeColor=#c2185b;strokeWidth=1.5;" edge="1" parent="1" source="embed" target="cosine">
           <mxGeometry relative="1" as="geometry"/>
         </mxCell>
-        <mxCell id="arrow1_label" value="POST /api/search&#10;{ query: &quot;平淡一点&quot; }" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=10;fontColor=#3f51b5;" vertex="1" parent="1">
-          <mxGeometry x="155" y="148" width="120" height="26" as="geometry"/>
-        </mxCell>
-
-        <mxCell id="api_search" value="📡 serve.py&#10;do_GET / api/search" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#9fa8da;strokeColor=#3f51b5;shadow=1;" vertex="1" parent="1">
-          <mxGeometry x="160" y="220" width="110" height="50" as="geometry"/>
-        </mxCell>
-
-        <!-- ========== 阶段 2：向量检索 ========== -->
-        <mxCell id="ph2_box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fce4ec;strokeColor=#c2185b;strokeWidth=2;dashed=1;" vertex="1" parent="1">
-          <mxGeometry x="310" y="100" width="260" height="290" as="geometry"/>
-        </mxCell>
-        <mxCell id="ph2_label" value="阶段 2：向量检索" style="text;html=1;strokeColor=none;fillColor=#c2185b;align=center;fontSize=11;fontColor=#c2185b;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="340" y="108" width="200" height="20" as="geometry"/>
-        </mxCell>
-        <mxCell id="ph2_ms" value="≈ 4500ms" style="text;html=1;strokeColor=none;fillColor=none;align=right;fontSize=10;fontColor=#999;" vertex="1" parent="1">
-          <mxGeometry x="500" y="108" width="60" height="20" as="geometry"/>
-        </mxCell>
-
-        <mxCell id="embed" value="🔮 bge-m3 嵌入&#10;embed_query(&quot;平淡一点&quot;)&#10;→ [1024 维浮点向量]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8bbd0;strokeColor=#c2185b;shadow=1;" vertex="1" parent="1">
-          <mxGeometry x="330" y="135" width="220" height="60" as="geometry"/>
-        </mxCell>
-
-        <mxCell id="arrow_embed" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#c2185b;strokeWidth=1.5;" edge="1" parent="1" source="embed" target="cosine">
-          <mxGeometry relative="1" as="geometry"/>
-        </mxCell>
-
-        <mxCell id="cosine" value="📐 余弦相似度&#10;np.dot(vectors_norm, q_norm)&#10;→ 152 个 (0~1) 分数" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f48fb1;strokeColor=#c2185b;shadow=1;" vertex="1" parent="1">
-          <mxGeometry x="330" y="210" width="220" height="60" as="geometry"/>
-        </mxCell>
-
-        <mxCell id="arrow_cosine" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#c2185b;strokeWidth=1.5;" edge="1" parent="1" source="cosine" target="vectors_npy">
+        <mxCell id="c3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;strokeColor=#c2185b;strokeWidth=1.5;" edge="1" parent="1" source="cosine" target="vec">
           <mxGeometry relative="1" as="geometry"/>
         </mxCell>
 
-        <mxCell id="vectors_npy" value="💾 vectors.npy&#10;(152, 1024) float32&#10;预计算 L2 归一化" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1bee7;strokeColor=#7b1fa2;dashed=1;" vertex="1" parent="1">
-          <mxGeometry x="360" y="285" width="160" height="50" as="geometry"/>
+        <mxCell id="ollama" value="⏳ Ollama API&#10;localhost:11434" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;fillColor=#fff9c4;strokeColor=#f9a825;fontFamily=Helvetica;fontSize=10;fontColor=#666;" vertex="1" parent="1">
+          <mxGeometry x="70" y="285" width="100" height="34" as="geometry"/>
+        </mxCell>
+        <mxCell id="c2s" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0;strokeColor=#f9a825;strokeWidth=1;dashed=1;" edge="1" parent="1" source="ollama" target="embed">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- 耗时标注 -->
+        <mxCell id="tm1" value="~4500ms" style="text;html=1;strokeColor=none;fillColor=#fff0f0;align=center;fontSize=10;fontFamily=Helvetica;fontColor=#c2185b;" vertex="1" parent="1">
+          <mxGeometry x="80" y="322" width="150" height="16" as="geometry"/>
+        </mxCell>
+        <mxCell id="tm2" value="&lt; 1ms" style="text;html=1;strokeColor=none;fillColor=#f0fff0;align=center;fontSize=10;fontFamily=Helvetica;fontColor=#2e7d32;" vertex="1" parent="1">
+          <mxGeometry x="310" y="278" width="150" height="16" as="geometry"/>
         </mxCell>
 
         <!-- ========== 阶段 3：后处理 ========== -->
-        <mxCell id="ph3_box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#388e3c;strokeWidth=2;dashed=1;" vertex="1" parent="1">
-          <mxGeometry x="600" y="100" width="260" height="290" as="geometry"/>
+        <mxCell id="ph3" value="阶段 3：后处理（&lt; 1ms）" style="swimlane;html=1;startSize=22;horizontal=1;fillColor=#e8f5e9;strokeColor=#43a047;swimlaneFillColor=#e8f5e9;fontSize=11;fontFamily=Helvetica;fontColor=#1b5e20;" vertex="1" parent="1">
+          <mxGeometry x="40" y="350" width="1120" height="130" as="geometry"/>
         </mxCell>
-        <mxCell id="ph3_label" value="阶段 3：后处理" style="text;html=1;strokeColor=none;fillColor=#388e3c;align=center;fontSize=11;fontColor=#388e3c;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="630" y="108" width="200" height="20" as="geometry"/>
+
+        <mxCell id="dcut" value="&lt;b&gt;✂️ dynamic_cut&lt;/b&gt;&lt;br&gt;min_score=0.4&amp;nbsp;&amp;nbsp;max=6&lt;br&gt;&lt;span style=&quot;font-size:10px;color:#666;&quot;&gt;陡降检测 0.15 截断&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#388e3c;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="70" y="380" width="150" height="50" as="geometry"/>
         </mxCell>
-        <mxCell id="ph3_ms" value="&lt; 1ms" style="text;html=1;strokeColor=none;fillColor=none;align=right;fontSize=10;fontColor=#999;" vertex="1" parent="1">
-          <mxGeometry x="790" y="108" width="60" height="20" as="geometry"/>
+
+        <mxCell id="rf" value="&lt;b&gt;🔍 rule_filter&lt;/b&gt;&lt;br&gt;检测 6 种意图方向&lt;br&gt;&lt;span style=&quot;font-size:10px;color:#666;&quot;&gt;排除 contrast/saturation/tone 不匹配&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#a5d6a7;strokeColor=#388e3c;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="280" y="380" width="190" height="50" as="geometry"/>
         </mxCell>
-        <mxCell id="arrow_cosine_to_cut" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;strokeColor=#444;strokeWidth=1.5;" edge="1" parent="1" source="cosine" target="dynamic_cut">
+
+        <mxCell id="tags" value="意图关键词：&#10;低对比 / 高对比 / 低饱和 / 高饱和 / 暖 / 冷" style="text;html=1;strokeColor=none;fillColor=#f1f8e9;align=center;fontSize=9;fontFamily=Menlo;fontColor=#558b2f;" vertex="1" parent="1">
+          <mxGeometry x="280" y="435" width="190" height="28" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="preset" value="&lt;b&gt;🧩 Preset 元数据&lt;/b&gt;&lt;br&gt;contrast / saturation / tone&lt;br&gt;&lt;span style=&quot;font-size:10px;color:#666;&quot;&gt;关键词引导初始化&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1bee7;strokeColor=#7b1fa2;dashed=1;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="540" y="380" width="140" height="50" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="c4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;strokeColor=#388e3c;strokeWidth=1.5;" edge="1" parent="1" source="dcut" target="rf">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="c5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;strokeColor=#7b1fa2;strokeWidth=1;dashed=1;" edge="1" parent="1" source="rf" target="preset">
           <mxGeometry relative="1" as="geometry"/>
         </mxCell>
 
-        <mxCell id="dynamic_cut" value="✂️ dynamic_cut&#10;min_score=0.4&#10;drop_threshold=0.15&#10;max_count=6" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#388e3c;shadow=1;" vertex="1" parent="1">
-          <mxGeometry x="620" y="135" width="220" height="55" as="geometry"/>
-        </mxCell>
-
-        <mxCell id="arrow_cut" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#388e3c;strokeWidth=1.5;" edge="1" parent="1" source="dynamic_cut" target="rule_filter">
+        <!-- 连接：检索 → 后处理 -->
+        <mxCell id="c6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0;exitY=1;entryX=0.35;entryY=0;strokeColor=#e91e63;strokeWidth=1.5;" edge="1" parent="1" source="cosine" target="ph3">
           <mxGeometry relative="1" as="geometry"/>
-        </mxCell>
-
-        <mxCell id="rule_filter" value="🔍 rule_filter&#10;检测 6 种意图方向&#10;排除 mismatch 预设&#10;→ 最多 3 条" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#a5d6a7;strokeColor=#388e3c;shadow=1;" vertex="1" parent="1">
-          <mxGeometry x="620" y="205" width="220" height="65" as="geometry"/>
-        </mxCell>
-
-        <mxCell id="intent_tags" value="意图关键词：&#10;低对比 / 高对比 / 低饱和 / 高饱和 / 暖 / 冷" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=9;fontColor=#666;" vertex="1" parent="1">
-          <mxGeometry x="640" y="270" width="180" height="30" as="geometry"/>
         </mxCell>
 
         <!-- ========== 阶段 4：日志 + 返回 ========== -->
-        <mxCell id="ph4_box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#e65100;strokeWidth=2;dashed=1;" vertex="1" parent="1">
-          <mxGeometry x="890" y="100" width="270" height="290" as="geometry"/>
+        <mxCell id="ph4" value="阶段 4：日志 + 响应" style="swimlane;html=1;startSize=22;horizontal=1;fillColor=#fff3e0;strokeColor=#ef6c00;swimlaneFillColor=#fff3e0;fontSize=11;fontFamily=Helvetica;fontColor=#bf360c;" vertex="1" parent="1">
+          <mxGeometry x="40" y="500" width="1120" height="130" as="geometry"/>
         </mxCell>
-        <mxCell id="ph4_label" value="阶段 4：日志 + 返回" style="text;html=1;strokeColor=none;fillColor=#e65100;align=center;fontSize=11;fontColor=#e65100;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="925" y="108" width="200" height="20" as="geometry"/>
+
+        <mxCell id="lj" value="&lt;b&gt;📝 log_search_json&lt;/b&gt;&lt;br&gt;写入 data/search_log/*.json&lt;br&gt;&lt;span style=&quot;font-size:10px;color:#666;&quot;&gt;query + vector + results + click&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe0b2;strokeColor=#e65100;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="70" y="530" width="180" height="50" as="geometry"/>
         </mxCell>
-        <mxCell id="ph4_ms" value="&lt; 1ms" style="text;html=1;strokeColor=none;fillColor=none;align=right;fontSize=10;fontColor=#999;" vertex="1" parent="1">
-          <mxGeometry x="1090" y="108" width="60" height="20" as="geometry"/>
+
+        <mxCell id="resp" value="&lt;b&gt;✅ 返回前端&lt;/b&gt;&lt;br&gt;{ results: [...], count, ms, search_id }&lt;br&gt;&lt;span style=&quot;font-size:10px;color:#666;&quot;&gt;淡雅warm 0.532 / WARM暖调 0.529 / FAKE5207WARM暖 0.520&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcc80;strokeColor=#e65100;fontFamily=Menlo;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="310" y="530" width="260" height="50" as="geometry"/>
         </mxCell>
-        <mxCell id="arrow_ruler_to_log" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;strokeColor=#444;strokeWidth=1.5;" edge="1" parent="1" source="rule_filter" target="log_json">
+
+        <mxCell id="c7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;strokeColor=#e65100;strokeWidth=1.5;" edge="1" parent="1" source="lj" target="resp">
           <mxGeometry relative="1" as="geometry"/>
-        </mxCell>
-
-        <mxCell id="log_json" value="📝 log_search_json&#10;写入 data/search_log/&#10;{ query, vector, results,&#10;  duration_ms, timestamp }" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe0b2;strokeColor=#e65100;shadow=1;" vertex="1" parent="1">
-          <mxGeometry x="910" y="135" width="230" height="65" as="geometry"/>
-        </mxCell>
-
-        <mxCell id="arrow_log_to_response" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#e65100;strokeWidth=1.5;" edge="1" parent="1" source="log_json" target="response">
-          <mxGeometry relative="1" as="geometry"/>
-        </mxCell>
-
-        <mxCell id="response" value="✅ 返回前端&#10;{&#10;  results: [&quot;淡雅warm&quot; 0.532,&#10;           &quot;WARM暖调&quot;   0.529,&#10;           &quot;FAKE5207WARM暖&quot; 0.520],&#10;  count: 3, ms: 4562,&#10;  search_id: &quot;2026-06-23_042&quot;&#10;}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcc80;strokeColor=#e65100;shadow=1;" vertex="1" parent="1">
-          <mxGeometry x="910" y="215" width="230" height="95" as="geometry"/>
         </mxCell>
 
         <!-- ========== 底部汇总 ========== -->
-        <mxCell id="summary_box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#9e9e9e;strokeWidth=1;" vertex="1" parent="1">
-          <mxGeometry x="50" y="430" width="1100" height="160" as="geometry"/>
+        <mxCell id="summary" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#ccc;strokeWidth=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="660" width="1120" height="120" as="geometry"/>
         </mxCell>
-        <mxCell id="summary_title" value="全链路耗时分布" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=14;fontStyle=1;fontColor=#333;" vertex="1" parent="1">
-          <mxGeometry x="400" y="440" width="400" height="25" as="geometry"/>
+
+        <mxCell id="sum_title" value="全链路耗时" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=14;fontFamily=Helvetica;fontStyle=1;fontColor=#333;" vertex="1" parent="1">
+          <mxGeometry x="400" y="665" width="400" height="22" as="geometry"/>
         </mxCell>
 
         <!-- 耗时条 -->
-        <mxCell id="bar_bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0e0e0;strokeColor=none;" vertex="1" parent="1">
-          <mxGeometry x="100" y="480" width="900" height="24" as="geometry"/>
+        <mxCell id="bar1" value="bge-m3 嵌入（Ollama API） ≈ 4500ms" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f48fb1;strokeColor=none;fontSize=11;fontFamily=Helvetica;fontColor=#fff;align=left;verticalAlign=middle;overflow=hidden;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="70" y="695" width="820" height="22" as="geometry"/>
+        </mxCell>
+        <mxCell id="bar2" value="后处理 &lt; 1ms" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#81c784;strokeColor=none;fontSize=11;fontFamily=Helvetica;fontColor=#fff;align=center;verticalAlign=middle;overflow=hidden;" vertex="1" parent="1">
+          <mxGeometry x="890" y="695" width="240" height="22" as="geometry"/>
         </mxCell>
 
-        <mxCell id="bar_embed" value="bge-m3 嵌入 4500ms" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f48fb1;strokeColor=none;fontSize=11;fontColor=#fff;fontStyle=1;align=center;overflow=hidden;" vertex="1" parent="1">
-          <mxGeometry x="100" y="480" width="810" height="24" as="geometry"/>
+        <mxCell id="legend" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="70" y="730" width="500" height="36" as="geometry"/>
         </mxCell>
-        <mxCell id="bar_other" value="余弦 + 截断 + 过滤 + 日志 &lt;1ms" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#81c784;strokeColor=none;fontSize=10;fontColor=#fff;align=center;overflow=hidden;" vertex="1" parent="1">
-          <mxGeometry x="910" y="480" width="90" height="24" as="geometry"/>
+        <mxCell id="ll1" value="■ 向量检索" style="text;html=1;strokeColor=none;fillColor=#f48fb1;align=center;fontSize=10;fontFamily=Helvetica;fontColor=#f48fb1;" vertex="1" parent="1">
+          <mxGeometry x="80" y="730" width="70" height="16" as="geometry"/>
         </mxCell>
-
-        <!-- 图例 -->
-        <mxCell id="legend" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#ccc;dashed=1;" vertex="1" parent="1">
-          <mxGeometry x="100" y="520" width="300" height="55" as="geometry"/>
+        <mxCell id="ll2" value="■ 后处理" style="text;html=1;strokeColor=none;fillColor=#81c784;align=center;fontSize=10;fontFamily=Helvetica;fontColor=#81c784;" vertex="1" parent="1">
+          <mxGeometry x="160" y="730" width="60" height="16" as="geometry"/>
         </mxCell>
-        <mxCell id="legend_title" value="图例" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=11;fontStyle=1;fontColor=#333;" vertex="1" parent="1">
-          <mxGeometry x="110" y="523" width="50" height="20" as="geometry"/>
+        <mxCell id="ll3" value="■ 日志 + 响应" style="text;html=1;strokeColor=none;fillColor=#ffcc80;align=center;fontSize=10;fontFamily=Helvetica;fontColor=#ffcc80;" vertex="1" parent="1">
+          <mxGeometry x="230" y="730" width="80" height="16" as="geometry"/>
         </mxCell>
-
-        <mxCell id="leg_embed" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f48fb1;strokeColor=none;" vertex="1" parent="1">
-          <mxGeometry x="120" y="543" width="12" height="12" as="geometry"/>
-        </mxCell>
-        <mxCell id="leg_embed_t" value="向量检索（Ollama API + 余弦）" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=10;fontColor=#555;" vertex="1" parent="1">
-          <mxGeometry x="136" y="540" width="140" height="18" as="geometry"/>
-        </mxCell>
-
-        <mxCell id="leg_post" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#81c784;strokeColor=none;" vertex="1" parent="1">
-          <mxGeometry x="280" y="543" width="12" height="12" as="geometry"/>
-        </mxCell>
-        <mxCell id="leg_post_t" value="后处理（numpy + 规则）" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=10;fontColor=#555;" vertex="1" parent="1">
-          <mxGeometry x="296" y="540" width="140" height="18" as="geometry"/>
-        </mxCell>
-
-        <!-- 调用链路文本 -->
-        <mxCell id="chain" value="链路：app.html → POST /api/search → serve.py → embed_query(bge-m3) → np.dot → dynamic_cut → rule_filter → log_search_json → 返回结果" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=11;fontColor=#333;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="100" y="565" width="900" height="22" as="geometry"/>
-        </mxCell>
-
-        <!-- 关键词标注 -->
-        <mxCell id="key1" value="关键参数" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=11;fontStyle=1;fontColor=#1a1a2e;" vertex="1" parent="1">
-          <mxGeometry x="440" y="610" width="320" height="20" as="geometry"/>
-        </mxCell>
-
-        <mxCell id="param1" value="batch_size=1 | min_score=0.4 | drop_threshold=0.15 | max_count=6 | CONCURRENCY=3" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=10;fontColor=#666;" vertex="1" parent="1">
-          <mxGeometry x="320" y="628" width="560" height="18" as="geometry"/>
+        <mxCell id="ll4" value="链路：browser → serve → embed → cosine → dynamic_cut → rule_filter → log → response" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=10;fontFamily=Menlo;fontColor=#888;" vertex="1" parent="1">
+          <mxGeometry x="80" y="750" width="900" height="18" as="geometry"/>
         </mxCell>
 
       </root>
